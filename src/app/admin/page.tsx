@@ -68,6 +68,51 @@ export default async function AdminOverview() {
       }));
   }
 
+  // Recent cancellations — same RLS-bypass reasoning as the waitlist above.
+  const { data: cancelled } = await admin
+    .from("bookings")
+    .select("id, user_id, cancelled_at, payment_status, refunded_at, class_sessions(starts_at, classes(name))")
+    .eq("status", "cancelled")
+    .not("cancelled_at", "is", null)
+    .order("cancelled_at", { ascending: false })
+    .limit(10);
+
+  type CancelRow = {
+    id: string;
+    user_id: string;
+    cancelled_at: string;
+    payment_status: string;
+    refunded_at: string | null;
+    class_sessions: { starts_at: string; classes: { name: string } | null } | null;
+  };
+  const cancelRows = ((cancelled ?? []) as unknown as CancelRow[]).filter((c) => c.class_sessions);
+
+  let cancelDisplay: { id: string; who: string; className: string; when: string; cancelledOn: string; outcome: string }[] = [];
+  if (cancelRows.length > 0) {
+    const uniqueIds = Array.from(new Set(cancelRows.map((c) => c.user_id)));
+    const [{ data: profiles }, { data: usersPage }] = await Promise.all([
+      admin.from("profiles").select("id, full_name").in("id", uniqueIds),
+      admin.auth.admin.listUsers({ perPage: 1000 }),
+    ]);
+    const nameById = new Map((profiles ?? []).map((p) => [p.id, p.full_name]));
+    const emailById = new Map(usersPage.users.map((u) => [u.id, u.email]));
+
+    cancelDisplay = cancelRows.map((c) => ({
+      id: c.id,
+      who: nameById.get(c.user_id) || emailById.get(c.user_id) || "Unknown customer",
+      className: c.class_sessions!.classes?.name ?? "",
+      when: new Date(c.class_sessions!.starts_at).toLocaleString("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      cancelledOn: new Date(c.cancelled_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+      outcome: c.refunded_at ? "refunded" : c.payment_status === "paid" ? "not refunded" : "no payment taken",
+    }));
+  }
+
   return (
     <>
       <div className="admin-stats">
@@ -97,6 +142,26 @@ export default async function AdminOverview() {
                 <span>{w.className}</span>
                 <span>{w.when}</span>
                 <span>waiting since {w.waitingSince}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="admin-card" style={{ marginTop: "1.5rem" }}>
+        <h3>Recent cancellations</h3>
+        {cancelDisplay.length === 0 ? (
+          <p className="admin-empty">No cancellations yet.</p>
+        ) : (
+          <div className="admin-table">
+            {cancelDisplay.map((c) => (
+              <div className="admin-row" key={c.id}>
+                <span>{c.who}</span>
+                <span>{c.className}</span>
+                <span>{c.when}</span>
+                <span>
+                  cancelled {c.cancelledOn} · {c.outcome}
+                </span>
               </div>
             ))}
           </div>

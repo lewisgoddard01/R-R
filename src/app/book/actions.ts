@@ -6,7 +6,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe";
 import { promoteWaitlistAndNotify } from "@/lib/waitlist";
-import { sendBookingConfirmationEmail } from "@/lib/booking-email";
+import { sendBookingConfirmationEmail, sendCancellationEmails } from "@/lib/booking-email";
 import { PACK_SIZE, PACK_PRICE_PENCE } from "@/lib/packs";
 
 export async function bookSessionAction(sessionId: string) {
@@ -164,12 +164,12 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
       .eq("id", bookingId)
       .eq("user_id", user.id)
       .maybeSingle(),
-    supabase.from("class_sessions").select("starts_at").eq("id", sessionId).maybeSingle(),
+    supabase.from("class_sessions").select("starts_at, classes(name)").eq("id", sessionId).maybeSingle(),
   ]);
 
   const { error } = await supabase
     .from("bookings")
-    .update({ status: "cancelled" })
+    .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
     .eq("id", bookingId)
     .eq("user_id", user.id);
   if (error) return { error: error.message };
@@ -181,6 +181,7 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
     if (existing.paid_via_pack_id) {
       try {
         await supabase.rpc("refund_class_credit", { p_pack_id: existing.paid_via_pack_id });
+        await supabase.from("bookings").update({ refunded_at: new Date().toISOString() }).eq("id", bookingId);
         refunded = true;
       } catch {
         // Refund failure shouldn't block the cancellation.
@@ -188,7 +189,10 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
     } else if (existing.stripe_payment_intent_id) {
       try {
         await stripe.refunds.create({ payment_intent: existing.stripe_payment_intent_id });
-        await supabase.from("bookings").update({ payment_status: "refunded" }).eq("id", bookingId);
+        await supabase
+          .from("bookings")
+          .update({ payment_status: "refunded", refunded_at: new Date().toISOString() })
+          .eq("id", bookingId);
         refunded = true;
       } catch {
         // Refund failure shouldn't block the cancellation — refund manually from the Stripe dashboard if needed.
@@ -196,13 +200,34 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
     }
   }
 
-  await promoteWaitlistAndNotify(sessionId);
+  const noRefund = existing?.payment_status === "paid" && !withinRefundWindow;
+
+  const cls = session?.classes as unknown as { name: string } | null;
+  const cancellationEmail =
+    user.email && cls && session
+      ? (() => {
+          const when = new Date(session.starts_at).toLocaleString("en-GB", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          const refundNote = refunded
+            ? existing?.paid_via_pack_id
+              ? "Your class credit has been returned to your account."
+              : "You've been refunded in full."
+            : noRefund
+              ? "As this was within 24 hours of the class, it wasn't refunded."
+              : "No payment was taken for this booking.";
+          return sendCancellationEmails({ email: user.email!, className: cls.name, when, refundNote });
+        })()
+      : Promise.resolve();
+
+  await Promise.all([cancellationEmail, promoteWaitlistAndNotify(sessionId)]);
 
   revalidatePath("/book");
   revalidatePath("/account/bookings");
-  return {
-    ok: true,
-    refunded,
-    noRefund: existing?.payment_status === "paid" && !withinRefundWindow,
-  };
+  revalidatePath("/admin");
+  return { ok: true, refunded, noRefund };
 }

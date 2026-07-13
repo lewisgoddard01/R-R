@@ -56,7 +56,12 @@ export default async function Book({
   const [{ data: availability }, { data: myBookings }] = await Promise.all([
     ids.length ? supabase.rpc("session_availability", { p_session_ids: ids }) : Promise.resolve({ data: [] }),
     user && ids.length
-      ? supabase.from("bookings").select("session_id, status").eq("user_id", user.id).in("session_id", ids)
+      ? supabase
+          .from("bookings")
+          .select("session_id, status")
+          .eq("user_id", user.id)
+          .in("session_id", ids)
+          .in("status", ["booked", "waitlisted"])
       : Promise.resolve({ data: [] }),
   ]);
 

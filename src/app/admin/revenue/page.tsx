@@ -11,6 +11,7 @@ export default async function AdminRevenue() {
     .from("bookings")
     .select("status, class_sessions(starts_at, classes(name, price_pence))")
     .in("status", ["booked", "attended"])
+    .eq("payment_status", "paid")
     .gte("class_sessions.starts_at", startOfMonth.toISOString());
 
   type Row = { class_sessions: { starts_at: string; classes: { name: string; price_pence: number } } | null };
@@ -29,11 +30,11 @@ export default async function AdminRevenue() {
   return (
     <>
       <div className="admin-card" style={{ marginTop: "2rem" }}>
-        <h3>This month — estimated</h3>
+        <h3>This month</h3>
         <p className="admin-empty" style={{ marginBottom: "1.2rem" }}>
-          This is an <strong>estimate</strong> based on booked classes at their listed price — it isn&apos;t
-          real payment data yet. Connect Stripe (see <code>NEXT-STEPS.md</code>) to capture actual card
-          payments and make this figure exact.
+          Paid bookings this month, at each class&apos;s listed price. Classes booked using a 5-class
+          bundle are counted here too, even though that revenue was collected when the bundle was
+          purchased — so the true cash figure may differ slightly from this total.
         </p>
         <p style={{ fontFamily: "var(--serif)", fontSize: "2.6rem", color: "var(--orange)" }}>
           £{(totalPence / 100).toFixed(2)}

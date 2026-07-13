@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Rule } from "@/components/rule";
 import { DarkMap } from "@/components/dark-map";
 
@@ -58,9 +59,13 @@ export default function Contact() {
           <div className="note-card" data-reveal>
             <h3>Booking online</h3>
             <p>
-              We&apos;re setting up online booking and payments so you can buy single classes or
-              bundles, redeem class codes, and manage everything from your own account. In the
-              meantime, email or call us and we&apos;ll get you booked in.
+              Book and pay for classes any time from your own account — buy a single class or a
+              5-class bundle, see your upcoming bookings, and join a waitlist if a class is full.
+            </p>
+            <p style={{ marginTop: "1rem" }}>
+              <Link href="/book" className="btn btn--primary">
+                Book a class <span className="btn__x">→</span>
+              </Link>
             </p>
           </div>
         </div>

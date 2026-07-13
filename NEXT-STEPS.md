@@ -9,8 +9,8 @@
       → open each class → add sessions (dates/times, repeat weekly for up to 12 weeks).
 - [ ] Test it yourself: log in as a normal customer, complete the health form once, book a class,
       and check it appears under "My bookings".
-- → Real card payment isn't live yet (that needs Stripe, step 1 below) — for now, booking reserves
-  the spot but doesn't take a card payment. Once Stripe is connected we'll wire real checkout in.
+- → Real card payment is wired in now (see step 1 below) — booking sends customers to Stripe
+  Checkout and confirms automatically once paid.
 
 ## 1. Stripe payments  (real card payments — code is written, needs 2 steps to switch on)
 - [x] Publishable + secret **test** keys added to `.env.local` (the app runs on these for now).
@@ -78,4 +78,5 @@ Marketing site (orange & black, real logo, your content) · customer logins · p
 sign-once health questionnaire + waiver (PAR-Q-style health screen) · dark map on Contact ·
 **admin dashboard** (`/admin`) to add/edit/remove classes and generate future session dates ·
 **booking system** with capacity limits, waitlists, and automatic promotion + email when a spot
-frees up · **revenue page** (estimated until Stripe is connected).
+frees up · **Stripe payments** (Checkout, webhook, refunds, 5-class bundle credits) · **revenue page**
+showing real paid bookings.
