@@ -1,24 +1,47 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Rule, Leaf } from "@/components/rule";
-import { createPackCheckoutAction } from "@/app/book/actions";
+import { createBundleCheckoutAction } from "@/app/book/actions";
+import { WELCOME_PACK, BUNDLES } from "@/lib/packs";
+import { createClient } from "@/lib/supabase/server";
+import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
 
 export const metadata: Metadata = {
   title: "Pricing — Revive & Reform",
   description: "Class prices, bundles and private sessions at Revive & Reform, Ripley.",
 };
 
-const BUNDLES = [
-  { qty: "2 classes", price: "£38", per: "£19 per class" },
-  { qty: "3 classes", price: "£54", per: "£18 per class" },
-  { qty: "4 classes", price: "£68", per: "£17 per class" },
-  { qty: "5 classes", price: "£80", per: "£16 per class" },
-];
+export default async function Pricing({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error: errorMsg } = await searchParams;
+  const open = bookingsAreOpen();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-export default function Pricing() {
-  async function buyPack() {
+  let welcomeOfferUsed = false;
+  if (user) {
+    const { data } = await supabase
+      .from("class_packs")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("kind", WELCOME_PACK.kind)
+      .maybeSingle();
+    welcomeOfferUsed = Boolean(data);
+  }
+
+  async function buyWelcome() {
     "use server";
-    await createPackCheckoutAction();
+    await createBundleCheckoutAction(WELCOME_PACK.kind);
+  }
+
+  async function buyBundle(kind: string) {
+    "use server";
+    await createBundleCheckoutAction(kind);
   }
 
   return (
@@ -32,12 +55,36 @@ export default function Pricing() {
         </p>
         <Rule />
 
+        {errorMsg && (
+          <div className="note-card" data-reveal style={{ marginBottom: "2rem" }}>
+            <p>{errorMsg}</p>
+          </div>
+        )}
+
+        {!open && (
+          <div className="note-card" data-reveal style={{ marginBottom: "2rem" }}>
+            <h3>Purchases open {BOOKINGS_OPEN_AT_LABEL}</h3>
+            <p>We&apos;re not quite ready to take payments yet — these prices are for reference until then.</p>
+          </div>
+        )}
+
         {/* the one emphasised spend on this page */}
         <div className="price-band" data-reveal>
           <div>
             <Leaf label="Welcome offer" />
             <h3 style={{ marginTop: ".5rem" }}>Two classes, one-time</h3>
             <p>For new clients — come and try us out.</p>
+            {welcomeOfferUsed ? (
+              <p style={{ marginTop: ".8rem", color: "var(--muted)", fontSize: ".9rem" }}>
+                You&apos;ve already used this offer.
+              </p>
+            ) : open ? (
+              <form action={buyWelcome} style={{ marginTop: "1rem" }}>
+                <button type="submit" className="btn btn--primary">
+                  Claim welcome offer <span className="btn__x">→</span>
+                </button>
+              </form>
+            ) : null}
           </div>
           <span className="price-row__amt">£20</span>
         </div>
@@ -76,18 +123,21 @@ export default function Pricing() {
         <div className="bundles" data-reveal>
           <h3>Bundles</h3>
           {BUNDLES.map((b) => (
-            <div className="bundle" key={b.qty}>
+            <div className="bundle" key={b.kind}>
               <b>
-                {b.qty} <small>· {b.per}</small>
+                {b.label} <small>· £{(b.pricePence / 100 / b.classes).toFixed(2)} per class</small>
               </b>
-              <span>{b.price}</span>
+              <span>£{(b.pricePence / 100).toFixed(2)}</span>
             </div>
           ))}
-          <form action={buyPack} style={{ marginTop: "1rem" }}>
-            <button type="submit" className="btn btn--primary">
-              Buy the 5-class bundle <span className="btn__x">→</span>
-            </button>
-          </form>
+          {open &&
+            BUNDLES.map((b) => (
+              <form action={buyBundle.bind(null, b.kind)} key={b.kind} style={{ marginTop: ".6rem" }}>
+                <button type="submit" className="btn btn--ghost">
+                  Buy {b.label} <span className="btn__x">→</span>
+                </button>
+              </form>
+            ))}
         </div>
 
         <p style={{ marginTop: "clamp(2rem,4vw,3rem)" }} data-reveal>
@@ -97,8 +147,8 @@ export default function Pricing() {
         </p>
 
         <p className="lede" style={{ marginTop: "2rem", fontSize: "0.95rem" }} data-reveal>
-          Cancellation policy: cancel more than 24 hours before your class for a full refund.
-          Cancelling within 24 hours releases your spot to the waitlist but isn&apos;t refunded.
+          Cancellation policy: all cancellations within a 24-hour period are non-refundable.
+          Cancellations before this time will be fully refunded.
         </p>
       </div>
     </section>

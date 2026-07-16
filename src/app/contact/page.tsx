@@ -60,7 +60,7 @@ export default function Contact() {
             <h3>Booking online</h3>
             <p>
               Book and pay for classes any time from your own account — buy a single class or a
-              5-class bundle, see your upcoming bookings, and join a waitlist if a class is full.
+              class bundle, see your upcoming bookings, and join a waitlist if a class is full.
             </p>
             <p style={{ marginTop: "1rem" }}>
               <Link href="/book" className="btn btn--primary">

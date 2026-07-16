@@ -6,6 +6,22 @@ import { createClient } from "@/lib/supabase/client";
 
 const YES_NO = ["No", "Yes"] as const;
 
+const CONDITIONS = [
+  { key: "abdominal", label: "Abdominal disorder or recent surgery" },
+  { key: "arthritis", label: "Arthritis (osteo or rheumatoid)" },
+  { key: "backPain", label: "Unspecified back pain" },
+  { key: "spinalInjury", label: "Spinal injury" },
+  { key: "jointReplacement", label: "Joint replacement" },
+  { key: "jointSensitivity", label: "Knee, hip, shoulder or neck sensitivities" },
+  { key: "respiratory", label: "Asthma or other respiratory issues" },
+  { key: "epilepsy", label: "Epilepsy" },
+  { key: "diabetes", label: "Diabetes" },
+  { key: "autoimmune", label: "Auto-immune disorder (e.g. M.E., M.S., Lupus)" },
+  { key: "anxietyDepression", label: "Anxiety or depression" },
+  { key: "migraine", label: "Migraine" },
+  { key: "sensory", label: "Sensory disorder affecting eyes or ears" },
+] as const;
+
 export function WaiverForm({ userId }: { userId: string }) {
   const router = useRouter();
   const supabase = createClient();
@@ -19,19 +35,24 @@ export function WaiverForm({ userId }: { userId: string }) {
     const f = new FormData(e.currentTarget);
     const get = (k: string) => String(f.get(k) || "");
 
-    // A short, original screening questionnaire covering the same ground as the
-    // standard PAR-Q+ readiness categories (heart/BP, chest pain, dizziness or
-    // balance, bone/joint issues, medication, pregnancy, and anything else) —
-    // written in our own words for Revive & Reform, not a copy of any copyrighted form.
+    // A screening questionnaire covering the same ground as the standard
+    // Pilates readiness-questionnaire categories (cardiac risk, blood
+    // pressure, pregnancy, and the common condition groups instructors need
+    // to know about) — written in our own words for Revive & Reform, not a
+    // copy of any copyrighted form.
     const health = {
+      priorPilates: get("priorPilates"),
+      priorPilatesDetail: get("priorPilatesDetail"),
+      reasonForPilates: get("reasonForPilates"),
       heartCondition: get("heartCondition"),
       chestPain: get("chestPain"),
       dizziness: get("dizziness"),
-      boneJoint: get("boneJoint"),
-      boneJointDetail: get("boneJointDetail"),
+      bloodPressure: get("bloodPressure"),
       medication: get("medication"),
       medicationDetail: get("medicationDetail"),
       pregnant: get("pregnant"),
+      conditions: CONDITIONS.filter((c) => f.get(`condition_${c.key}`) === "on").map((c) => c.key),
+      conditionsDetail: get("conditionsDetail"),
       otherReason: get("otherReason"),
       otherReasonDetail: get("otherReasonDetail"),
       emergencyName: get("emergencyName"),
@@ -65,6 +86,21 @@ export function WaiverForm({ userId }: { userId: string }) {
         </p>
 
         <div className="field">
+          <label htmlFor="priorPilates">Have you done Pilates before (mat or reformer)?</label>
+          <select id="priorPilates" name="priorPilates" defaultValue="No">
+            {YES_NO.map((v) => <option key={v}>{v}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="priorPilatesDetail">If yes, which style(s) and roughly how long?</label>
+          <input id="priorPilatesDetail" name="priorPilatesDetail" type="text" />
+        </div>
+        <div className="field">
+          <label htmlFor="reasonForPilates">What&apos;s brought you to Pilates? (optional)</label>
+          <input id="reasonForPilates" name="reasonForPilates" type="text" />
+        </div>
+
+        <div className="field">
           <label htmlFor="heartCondition">Has a doctor ever told you that you have a heart condition, or that you should only do physical activity recommended by a doctor?</label>
           <select id="heartCondition" name="heartCondition" defaultValue="No">
             {YES_NO.map((v) => <option key={v}>{v}</option>)}
@@ -83,17 +119,13 @@ export function WaiverForm({ userId }: { userId: string }) {
           </select>
         </div>
         <div className="field">
-          <label htmlFor="boneJoint">Do you have a bone, joint or soft-tissue problem (e.g. back, knee, hip, shoulder) that could be made worse by exercise?</label>
-          <select id="boneJoint" name="boneJoint" defaultValue="No">
+          <label htmlFor="bloodPressure">Do you have high or low blood pressure?</label>
+          <select id="bloodPressure" name="bloodPressure" defaultValue="No">
             {YES_NO.map((v) => <option key={v}>{v}</option>)}
           </select>
         </div>
         <div className="field">
-          <label htmlFor="boneJointDetail">If yes, please give brief detail</label>
-          <input id="boneJointDetail" name="boneJointDetail" type="text" />
-        </div>
-        <div className="field">
-          <label htmlFor="medication">Are you currently taking medication for your heart or blood pressure, or any other medication that could affect your ability to exercise?</label>
+          <label htmlFor="medication">Are you currently taking medication that could affect your ability to exercise?</label>
           <select id="medication" name="medication" defaultValue="No">
             {YES_NO.map((v) => <option key={v}>{v}</option>)}
           </select>
@@ -110,8 +142,26 @@ export function WaiverForm({ userId }: { userId: string }) {
             <option>Recently given birth</option>
           </select>
         </div>
+
         <div className="field">
-          <label htmlFor="otherReason">Is there any other reason you know of why you should not do physical activity without medical guidance?</label>
+          <label>Please tick any of the following that apply to you</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: ".5rem", marginTop: ".4rem" }}>
+            {CONDITIONS.map((c) => (
+              <label key={c.key} className="check" style={{ fontSize: ".92rem" }}>
+                <input type="checkbox" name={`condition_${c.key}`} /> {c.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="conditionsDetail">
+            If you ticked anything above, please give brief detail
+          </label>
+          <input id="conditionsDetail" name="conditionsDetail" type="text" />
+        </div>
+
+        <div className="field">
+          <label htmlFor="otherReason">Is there anything else you think we should know about your health?</label>
           <select id="otherReason" name="otherReason" defaultValue="No">
             {YES_NO.map((v) => <option key={v}>{v}</option>)}
           </select>
@@ -134,28 +184,38 @@ export function WaiverForm({ userId }: { userId: string }) {
         <legend>Waiver &amp; consent</legend>
         <div className="waiver-text">
           <p style={{ marginBottom: ".9rem" }}>
-            <strong>Confirmation of health.</strong> I confirm the answers above are accurate to the
-            best of my knowledge, and I&apos;ll let Revive &amp; Reform know if anything changes.
-            Where I&apos;ve answered &ldquo;yes&rdquo; to a health question, I confirm I am safe to
-            take part in Reformer Pilates and wellness sessions, seeking my own medical advice first
-            where appropriate.
+            <strong>Confirmation of health declaration.</strong> I confirm the answers above are
+            accurate to the best of my knowledge. I will inform Revive &amp; Reform if anything
+            changes with regard to my health.
+          </p>
+          <p style={{ marginBottom: ".9rem" }}>
+            Where I have answered &ldquo;yes&rdquo; to a health question, I confirm I have spoken
+            to my GP and I am fit to take part in reformer Pilates. I accept full responsibility
+            for my medical health and fitness while participating in classes at Revive &amp;
+            Reform.
           </p>
           <p style={{ marginBottom: ".9rem" }}>
             <strong>Assumption of risk.</strong> I understand that Reformer Pilates and related
             wellness activities involve physical exertion and carry an inherent risk of injury. I
-            will work within my own limits, follow my instructor&apos;s guidance, and stop and tell
-            my instructor if I feel unwell, dizzy, or in pain at any point.
+            will work within my own limits, follow my instructor&apos;s guidance, and stop and
+            tell my instructor if I feel unwell at any point.
           </p>
           <p style={{ marginBottom: ".9rem" }}>
-            <strong>Release of liability.</strong> I take part in classes and treatments at Revive
-            &amp; Reform voluntarily and at my own risk. To the fullest extent permitted by law, I
-            release Revive &amp; Reform and its instructors from liability for injury, loss or
-            damage arising from my participation, except where caused by their negligence.
+            <strong>Release of liability.</strong> I participate in classes at Revive &amp; Reform
+            voluntarily and at my own risk. To the fullest extent permitted by law, I release
+            Revive &amp; Reform and its instructors from liability for injury, loss or damage
+            arising from my participation, except where caused by their negligence.
+          </p>
+          <p style={{ marginBottom: ".9rem" }}>
+            <strong>Medical authorisation.</strong> In an emergency, I authorise Revive &amp;
+            Reform to seek appropriate medical assistance on my behalf and to contact the
+            emergency contact named above. I give consent to Revive &amp; Reform to share
+            information with Emergency Services if required.
           </p>
           <p>
-            <strong>Medical authorisation.</strong> In an emergency, I authorise Revive &amp; Reform
-            to seek appropriate medical assistance on my behalf and to contact the emergency contact
-            named above.
+            <strong>Photography &amp; video.</strong> I consent to the use of photography and
+            videography by Revive &amp; Reform for use on their social media pages. If this
+            changes, I will notify the instructor in the class at the time of recording.
           </p>
         </div>
         <label className="check">

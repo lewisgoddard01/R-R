@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Rule } from "@/components/rule";
 import { bookSessionAction, createCheckoutAction } from "./actions";
+import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
 
 export const metadata: Metadata = {
   title: "Book a class — Revive & Reform",
@@ -14,8 +15,16 @@ type SessionRow = {
   starts_at: string;
   capacity: number;
   instructor: string | null;
-  classes: { id: string; name: string; price_pence: number } | null;
+  classes: { id: string; name: string; price_pence: number; description: string | null } | null;
 };
+
+// A brief, one-line hook for the booking list — just the first sentence of
+// the full class description shown elsewhere (e.g. /classes, /admin/classes).
+function briefDescription(description: string | null | undefined) {
+  if (!description) return null;
+  const match = description.match(/^.+?[.!?](?=\s|$)/);
+  return match ? match[0] : description;
+}
 
 export default async function Book({
   searchParams,
@@ -23,6 +32,35 @@ export default async function Book({
   searchParams: Promise<{ error?: string; joined?: string; cancelled?: string }>;
 }) {
   const { error: errorMsg, joined, cancelled } = await searchParams;
+
+  if (!bookingsAreOpen()) {
+    return (
+      <section className="sec page-head">
+        <div className="wrap">
+          <h1 className="display" data-reveal>
+            Book a <em>class.</em>
+          </h1>
+          <Rule />
+          <div className="note-card" data-reveal>
+            <h3>Bookings open {BOOKINGS_OPEN_AT_LABEL}</h3>
+            <p>
+              We&apos;re not quite ready to take bookings yet — check back on {BOOKINGS_OPEN_AT_LABEL}.
+              In the meantime, have a look at our{" "}
+              <Link href="/timetable" style={{ color: "var(--orange)" }}>
+                timetable
+              </Link>{" "}
+              or{" "}
+              <Link href="/contact" style={{ color: "var(--orange)" }}>
+                get in touch
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -44,7 +82,7 @@ export default async function Book({
 
   const { data: sessions } = await supabase
     .from("class_sessions")
-    .select("id, starts_at, capacity, instructor, classes(id, name, price_pence)")
+    .select("id, starts_at, capacity, instructor, classes(id, name, price_pence, description)")
     .eq("status", "scheduled")
     .gte("starts_at", now.toISOString())
     .lte("starts_at", horizon.toISOString())
@@ -100,7 +138,7 @@ export default async function Book({
         </h1>
         <p className="lede intro" data-reveal>
           Everything on the timetable for the next three weeks. Full classes offer a waitlist — if
-          someone drops out, we&apos;ll email the next person automatically.
+          someone drops out, everyone waiting is emailed automatically so you can claim the spot.
         </p>
         <Rule />
 
@@ -179,6 +217,10 @@ export default async function Book({
                         {!mine && spacesLeft > 0 && `${spacesLeft} space${spacesLeft === 1 ? "" : "s"} left`}
                         {!mine && spacesLeft <= 0 && "Full"}
                       </span>
+
+                      {briefDescription(s.classes?.description) && (
+                        <p className="crow__desc">{briefDescription(s.classes?.description)}</p>
+                      )}
 
                       {canAct && spacesLeft > 0 && (
                         <form action={payAndBook.bind(null, s.id)} style={{ gridColumn: "1/-1" }}>

@@ -20,9 +20,63 @@ const hanken = Hanken_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Revive & Reform — Reformer Pilates & Wellness Studio",
+  metadataBase: new URL("https://reviveandreform.co.uk"),
+  title: "Reformer Pilates in Ripley, Derbyshire — Revive & Reform",
   description:
-    "Boutique reformer Pilates and a calm wellness studio. Eight to a class, never more. Revive the body, reform the routine.",
+    "Boutique Reformer Pilates studio in Ripley, Derbyshire. Small classes, eight to a class, never more. Book online — beginner-friendly, everyone welcome.",
+  keywords: [
+    "Reformer Pilates Ripley",
+    "Pilates Derbyshire",
+    "Pilates studio Ripley",
+    "Reformer Pilates classes",
+    "Pilates near Ripley",
+  ],
+  authors: [{ name: "Revive & Reform" }],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    locale: "en_GB",
+    url: "https://reviveandreform.co.uk",
+    siteName: "Revive & Reform",
+    title: "Reformer Pilates in Ripley, Derbyshire — Revive & Reform",
+    description:
+      "Boutique Reformer Pilates studio in Ripley, Derbyshire. Small classes, eight to a class, never more.",
+    images: [{ url: "/assets/logo.jpg", width: 1200, height: 1200, alt: "Revive & Reform" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Reformer Pilates in Ripley, Derbyshire — Revive & Reform",
+    description:
+      "Boutique Reformer Pilates studio in Ripley, Derbyshire. Small classes, eight to a class, never more.",
+    images: ["/assets/logo.jpg"],
+  },
+  robots: { index: true, follow: true },
+};
+
+const businessJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "ExerciseGym",
+  name: "Revive & Reform",
+  description:
+    "Boutique Reformer Pilates and wellness studio in Ripley, Derbyshire. Small classes, eight to a class, never more.",
+  url: "https://reviveandreform.co.uk",
+  telephone: "+441773292102",
+  email: "info@reviveandreform.co.uk",
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "1D Oxford Street",
+    addressLocality: "Ripley",
+    addressRegion: "Derbyshire",
+    postalCode: "DE5 3AG",
+    addressCountry: "GB",
+  },
+  geo: {
+    "@type": "GeoCoordinates",
+    latitude: 53.049499,
+    longitude: -1.406437,
+  },
+  image: "https://reviveandreform.co.uk/assets/logo.jpg",
+  priceRange: "££",
 };
 
 export default async function RootLayout({
@@ -42,6 +96,10 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`${fraunces.variable} ${hanken.variable}`}>
       <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(businessJsonLd) }}
+        />
         <Nav isLoggedIn={Boolean(user)} isAdmin={isAdmin} />
         {children}
         <Footer />

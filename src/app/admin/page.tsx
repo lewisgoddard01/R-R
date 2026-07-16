@@ -109,7 +109,13 @@ export default async function AdminOverview() {
         minute: "2-digit",
       }),
       cancelledOn: new Date(c.cancelled_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-      outcome: c.refunded_at ? "refunded" : c.payment_status === "paid" ? "not refunded" : "no payment taken",
+      outcome: (() => {
+        if (c.refunded_at) return "refunded";
+        if (c.payment_status !== "paid") return "no payment taken";
+        const wasWithinRefundWindow =
+          +new Date(c.class_sessions!.starts_at) - +new Date(c.cancelled_at) >= 24 * 60 * 60 * 1000;
+        return wasWithinRefundWindow ? "⚠ refund failed — check Stripe" : "not refunded (within 24h)";
+      })(),
     }));
   }
 

@@ -3,8 +3,8 @@ import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
-import { promoteWaitlistAndNotify } from "@/lib/waitlist";
-import { PACK_SIZE, PACK_VALIDITY_DAYS } from "@/lib/packs";
+import { notifyWaitlistOfOpening } from "@/lib/waitlist";
+import { findBundle, PACK_VALIDITY_DAYS } from "@/lib/packs";
 
 export async function POST(req: NextRequest) {
   const signature = req.headers.get("stripe-signature");
@@ -26,8 +26,9 @@ export async function POST(req: NextRequest) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
-    if (session.metadata?.kind === "pack5") {
-      const userId = session.metadata.user_id;
+    const bundle = session.metadata?.kind ? findBundle(session.metadata.kind) : undefined;
+    if (bundle) {
+      const userId = session.metadata!.user_id;
       const paymentIntentId =
         typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
       const expiresAt = new Date(Date.now() + PACK_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -35,8 +36,9 @@ export async function POST(req: NextRequest) {
       if (userId) {
         await admin.from("class_packs").insert({
           user_id: userId,
-          classes_total: PACK_SIZE,
-          classes_remaining: PACK_SIZE,
+          kind: bundle.kind,
+          classes_total: bundle.classes,
+          classes_remaining: bundle.classes,
           price_paid_pence: session.amount_total ?? 0,
           stripe_checkout_session_id: session.id,
           stripe_payment_intent_id: paymentIntentId,
@@ -48,13 +50,13 @@ export async function POST(req: NextRequest) {
         if (email) {
           await sendEmail({
             to: email,
-            subject: `Your ${PACK_SIZE}-class bundle is ready`,
-            html: `<p>Payment received — you now have <strong>${PACK_SIZE} classes</strong> to use, valid for ${PACK_VALIDITY_DAYS} days. Just book as normal and a credit will be used automatically instead of taking payment.</p><p>— Revive &amp; Reform</p>`,
+            subject: `Your ${bundle.label} is ready`,
+            html: `<p>Payment received — you now have <strong>${bundle.classes} classes</strong> to use, valid for ${PACK_VALIDITY_DAYS} days. Just book as normal and a credit will be used automatically instead of taking payment.</p><p>— Revive &amp; Reform</p>`,
           }).catch(() => {});
           await sendEmail({
             to: ADMIN_EMAIL,
-            subject: `New ${PACK_SIZE}-class bundle purchased`,
-            html: `<p>${email} just bought a ${PACK_SIZE}-class bundle.</p>`,
+            subject: `New ${bundle.label} purchased`,
+            html: `<p>${email} just bought a ${bundle.label} bundle.</p>`,
           }).catch(() => {});
         }
       }
@@ -118,7 +120,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
       if (booking?.status === "booked" && booking.payment_status === "unpaid") {
         await admin.from("bookings").update({ status: "cancelled" }).eq("id", bookingId);
-        if (sessionId) await promoteWaitlistAndNotify(sessionId);
+        if (sessionId) await notifyWaitlistOfOpening(sessionId);
       }
     }
   }

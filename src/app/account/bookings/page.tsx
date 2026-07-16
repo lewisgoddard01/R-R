@@ -51,8 +51,8 @@ export default async function MyBookings({
         </h1>
         <p className="lede intro">Everything you&apos;ve booked or joined the waitlist for.</p>
         <p className="lede intro" style={{ fontSize: "0.95rem" }}>
-          Cancellation policy: cancel more than 24 hours before your class for a full refund.
-          Cancelling within 24 hours releases your spot but isn&apos;t refunded.
+          Cancellation policy: all cancellations within a 24-hour period are non-refundable.
+          Cancellations before this time will be fully refunded.
         </p>
 
         {refunded === "1" && (

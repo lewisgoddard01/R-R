@@ -4,12 +4,16 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
-import { promoteWaitlistAndNotify } from "@/lib/waitlist";
+import { notifyWaitlistOfOpening } from "@/lib/waitlist";
 import { sendBookingConfirmationEmail, sendCancellationEmails } from "@/lib/booking-email";
-import { PACK_SIZE, PACK_PRICE_PENCE } from "@/lib/packs";
+import { findBundle, WELCOME_PACK } from "@/lib/packs";
+import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
 
 export async function bookSessionAction(sessionId: string) {
+  if (!bookingsAreOpen()) return { error: `Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!` };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -25,12 +29,88 @@ export async function bookSessionAction(sessionId: string) {
   return { status: row?.result_status as "booked" | "waitlisted" };
 }
 
-// Reserves a spot (or a waitlist place, if the class is full). If the
-// customer has a class-pack credit available it's spent immediately and the
-// booking is confirmed with no payment step. Otherwise the customer is sent
-// to Stripe Checkout — the reservation holds for 30 minutes, and if payment
-// isn't completed the webhook releases it back to the class.
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+type BookedClassInfo = { name: string; price_pence: number };
+type BookedSessionInfo = { starts_at: string };
+
+// Shared by a fresh booking and a claimed waitlist spot: if the customer has
+// a class-pack credit available it's spent immediately and the booking is
+// confirmed with no payment step. Otherwise they're sent to Stripe Checkout —
+// the reservation holds for 30 minutes, and if payment isn't completed the
+// webhook releases it back to the class. Always ends in a redirect.
+async function settlePaymentAndRedirect(params: {
+  supabase: SupabaseServerClient;
+  userEmail: string | undefined;
+  bookingId: string;
+  sessionId: string;
+  session: BookedSessionInfo;
+  cls: BookedClassInfo;
+}): Promise<never> {
+  const { supabase, userEmail, bookingId, sessionId, session, cls } = params;
+
+  const { data: packId } = await supabase.rpc("consume_class_credit");
+  if (packId) {
+    // Customers can't write payment_status/paid_via_pack_id directly (see
+    // schema_v8_security_hardening.sql) — this is legitimate server-side
+    // confirmation that a credit was just atomically consumed above.
+    await createAdminClient()
+      .from("bookings")
+      .update({ payment_status: "paid", paid_via_pack_id: packId })
+      .eq("id", bookingId);
+    revalidatePath("/book");
+    revalidatePath("/account/bookings");
+
+    const when = new Date(session.starts_at).toLocaleString("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    if (userEmail) {
+      await sendBookingConfirmationEmail({ email: userEmail, className: cls.name, when });
+    }
+    redirect(`/book/success?booking_id=${bookingId}`);
+  }
+
+  const origin = (await headers()).get("origin") ?? "https://reviveandreform.co.uk";
+
+  const checkoutSession = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: "gbp",
+          product_data: { name: cls.name },
+          unit_amount: cls.price_pence,
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: `${origin}/book/success?booking_id=${bookingId}`,
+    cancel_url: `${origin}/book?cancelled=1`,
+    expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+    customer_email: userEmail,
+    metadata: { booking_id: bookingId, session_id: sessionId },
+  });
+
+  // Just records which Checkout Session this booking is waiting on — the
+  // webhook (using its own admin client) is what actually marks it paid.
+  await createAdminClient()
+    .from("bookings")
+    .update({ stripe_checkout_session_id: checkoutSession.id })
+    .eq("id", bookingId);
+
+  redirect(checkoutSession.url!);
+}
+
+// Reserves a spot (or a waitlist place, if the class is full), then hands
+// off to settlePaymentAndRedirect for an actual paid spot.
 export async function createCheckoutAction(sessionId: string) {
+  if (!bookingsAreOpen()) {
+    redirect(`/book?error=${encodeURIComponent(`Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!`)}`);
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -62,26 +142,98 @@ export async function createCheckoutAction(sessionId: string) {
     .maybeSingle();
   if (!myBooking) redirect("/book?error=Booking%20not%20found");
 
-  const { data: packId } = await supabase.rpc("consume_class_credit");
-  if (packId) {
-    await supabase
-      .from("bookings")
-      .update({ payment_status: "paid", paid_via_pack_id: packId })
-      .eq("id", myBooking.id);
-    revalidatePath("/book");
-    revalidatePath("/account/bookings");
+  await settlePaymentAndRedirect({
+    supabase,
+    userEmail: user.email,
+    bookingId: myBooking.id,
+    sessionId,
+    session,
+    cls,
+  });
+}
 
-    const when = new Date(session.starts_at).toLocaleString("en-GB", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    if (user.email) {
-      await sendBookingConfirmationEmail({ email: user.email, className: cls.name, when });
+// Called when a customer clicks their "Claim your spot →" link from a
+// waitlist-opening email. First to successfully claim wins the freed spot;
+// everyone else's claim attempt returns 'gone'.
+export async function claimWaitlistSpotAction(bookingId: string) {
+  if (!bookingsAreOpen()) {
+    redirect(`/book?error=${encodeURIComponent(`Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!`)}`);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect(`/login?next=${encodeURIComponent(`/book/claim?booking_id=${bookingId}`)}`);
+
+  const { data: result } = await supabase.rpc("claim_waitlist_spot", { p_booking_id: bookingId });
+
+  if (result !== "claimed") {
+    const messages: Record<string, string> = {
+      gone: "Sorry — someone else booked onto that class first.",
+      not_yours: "That booking link isn't for your account.",
+      not_found: "We couldn't find that booking.",
+      already_resolved: "That spot's already been sorted.",
+      class_cancelled: "That class is no longer available.",
+    };
+    redirect(`/book?error=${encodeURIComponent(messages[result as string] ?? "That spot is no longer available.")}`);
+  }
+
+  const { data: booking } = await supabase.from("bookings").select("session_id").eq("id", bookingId).maybeSingle();
+  if (!booking) redirect("/book?error=Booking%20not%20found");
+  const sessionId = booking.session_id;
+
+  const { data: session } = await supabase
+    .from("class_sessions")
+    .select("starts_at, classes(name, price_pence)")
+    .eq("id", sessionId)
+    .maybeSingle();
+  const cls = session?.classes as unknown as { name: string; price_pence: number } | null;
+  if (!cls || !session) redirect("/book?error=Class%20not%20found");
+
+  revalidatePath("/book");
+  revalidatePath("/account/bookings");
+  revalidatePath("/admin");
+
+  await settlePaymentAndRedirect({
+    supabase,
+    userEmail: user.email,
+    bookingId,
+    sessionId,
+    session,
+    cls,
+  });
+}
+
+// Buys a class-credit bundle (or the one-time welcome offer): flat Stripe
+// Checkout, not tied to any session. The webhook creates the class_packs row
+// once payment completes. The welcome offer is enforced as one-time-per-
+// customer here — if they've already got one on record, we refuse and
+// explain rather than letting them buy a second discounted intro pack.
+export async function createBundleCheckoutAction(kind: string) {
+  if (!bookingsAreOpen()) {
+    redirect(`/pricing?error=${encodeURIComponent(`Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!`)}`);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login?next=/pricing");
+
+  const bundle = findBundle(kind);
+  if (!bundle) redirect("/pricing?error=Unknown%20bundle");
+
+  if (bundle.kind === WELCOME_PACK.kind) {
+    const { data: existingWelcome } = await supabase
+      .from("class_packs")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("kind", WELCOME_PACK.kind)
+      .maybeSingle();
+    if (existingWelcome) {
+      redirect(`/pricing?error=${encodeURIComponent("You've already used the welcome offer — it's one-time only.")}`);
     }
-    redirect(`/book/success?booking_id=${myBooking.id}`);
   }
 
   const origin = (await headers()).get("origin") ?? "https://reviveandreform.co.uk";
@@ -92,46 +244,8 @@ export async function createCheckoutAction(sessionId: string) {
       {
         price_data: {
           currency: "gbp",
-          product_data: { name: cls.name },
-          unit_amount: cls.price_pence,
-        },
-        quantity: 1,
-      },
-    ],
-    success_url: `${origin}/book/success?booking_id=${myBooking.id}`,
-    cancel_url: `${origin}/book?cancelled=1`,
-    expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
-    customer_email: user.email ?? undefined,
-    metadata: { booking_id: myBooking.id, session_id: sessionId, user_id: user.id },
-  });
-
-  await supabase
-    .from("bookings")
-    .update({ stripe_checkout_session_id: checkoutSession.id })
-    .eq("id", myBooking.id);
-
-  redirect(checkoutSession.url!);
-}
-
-// Buys a 5-class bundle: flat £80 Stripe Checkout, not tied to any session.
-// The webhook creates the class_packs row once payment completes.
-export async function createPackCheckoutAction() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/pricing");
-
-  const origin = (await headers()).get("origin") ?? "https://reviveandreform.co.uk";
-
-  const checkoutSession = await stripe.checkout.sessions.create({
-    mode: "payment",
-    line_items: [
-      {
-        price_data: {
-          currency: "gbp",
-          product_data: { name: `${PACK_SIZE}-class bundle` },
-          unit_amount: PACK_PRICE_PENCE,
+          product_data: { name: bundle.label },
+          unit_amount: bundle.pricePence,
         },
         quantity: 1,
       },
@@ -139,7 +253,7 @@ export async function createPackCheckoutAction() {
     success_url: `${origin}/account?packPurchased=1`,
     cancel_url: `${origin}/pricing?packCancelled=1`,
     customer_email: user.email ?? undefined,
-    metadata: { kind: "pack5", user_id: user.id },
+    metadata: { kind: bundle.kind, user_id: user.id },
   });
 
   redirect(checkoutSession.url!);
@@ -175,28 +289,40 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
   if (error) return { error: error.message };
 
   const withinRefundWindow = session ? +new Date(session.starts_at) - Date.now() >= CANCELLATION_WINDOW_MS : false;
+  const refundShouldBeAttempted = withinRefundWindow && existing?.payment_status === "paid";
   let refunded = false;
+  let refundFailed = false;
 
-  if (withinRefundWindow && existing?.payment_status === "paid") {
-    if (existing.paid_via_pack_id) {
+  if (refundShouldBeAttempted) {
+    // Customers can't write refunded_at/payment_status directly (see
+    // schema_v8_security_hardening.sql) — these are legitimate server-side
+    // confirmations that a refund was just actually processed above.
+    const admin = createAdminClient();
+    if (existing!.paid_via_pack_id) {
       try {
-        await supabase.rpc("refund_class_credit", { p_pack_id: existing.paid_via_pack_id });
-        await supabase.from("bookings").update({ refunded_at: new Date().toISOString() }).eq("id", bookingId);
+        await supabase.rpc("refund_class_credit", { p_pack_id: existing!.paid_via_pack_id });
+        await admin.from("bookings").update({ refunded_at: new Date().toISOString() }).eq("id", bookingId);
         refunded = true;
       } catch {
-        // Refund failure shouldn't block the cancellation.
+        refundFailed = true;
       }
-    } else if (existing.stripe_payment_intent_id) {
+    } else if (existing!.stripe_payment_intent_id) {
       try {
-        await stripe.refunds.create({ payment_intent: existing.stripe_payment_intent_id });
-        await supabase
+        // Works the same way regardless of how the customer paid (card, Klarna, Clearpay,
+        // Apple/Google Pay, bank debit, etc.) — Stripe's refund API is payment-method-agnostic.
+        // Some methods (e.g. bank debits) can reject a refund if the original payment hasn't
+        // fully settled yet, which is exactly the case this catch exists for.
+        await stripe.refunds.create({ payment_intent: existing!.stripe_payment_intent_id });
+        await admin
           .from("bookings")
           .update({ payment_status: "refunded", refunded_at: new Date().toISOString() })
           .eq("id", bookingId);
         refunded = true;
       } catch {
-        // Refund failure shouldn't block the cancellation — refund manually from the Stripe dashboard if needed.
+        refundFailed = true;
       }
+    } else {
+      refundFailed = true;
     }
   }
 
@@ -217,17 +343,19 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
             ? existing?.paid_via_pack_id
               ? "Your class credit has been returned to your account."
               : "You've been refunded in full."
-            : noRefund
-              ? "As this was within 24 hours of the class, it wasn't refunded."
-              : "No payment was taken for this booking.";
-          return sendCancellationEmails({ email: user.email!, className: cls.name, when, refundNote });
+            : refundFailed
+              ? "We couldn't process your refund automatically — Alix will sort this out manually within a few days."
+              : noRefund
+                ? "As this was within 24 hours of the class, it wasn't refunded."
+                : "No payment was taken for this booking.";
+          return sendCancellationEmails({ email: user.email!, className: cls.name, when, refundNote, refundFailed });
         })()
       : Promise.resolve();
 
-  await Promise.all([cancellationEmail, promoteWaitlistAndNotify(sessionId)]);
+  await Promise.all([cancellationEmail, notifyWaitlistOfOpening(sessionId)]);
 
   revalidatePath("/book");
   revalidatePath("/account/bookings");
   revalidatePath("/admin");
-  return { ok: true, refunded, noRefund };
+  return { ok: true, refunded, noRefund, refundFailed };
 }

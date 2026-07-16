@@ -140,6 +140,24 @@ export default function About() {
             </a>
             .
           </p>
+
+          <div className="note-card" style={{ marginTop: "2rem" }} data-reveal>
+            <h3>What our clients say</h3>
+            <p>
+              We&apos;re proud to be reviewed on Trustpilot — have a look at what people are saying,
+              or leave us a review of your own if you&apos;ve been to a class.
+            </p>
+            <p style={{ marginTop: "1.2rem" }}>
+              <a
+                href="https://uk.trustpilot.com/review/reviveandreform.co.uk"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn--primary"
+              >
+                Read our Trustpilot reviews <span className="btn__x">→</span>
+              </a>
+            </p>
+          </div>
         </div>
       </div>
     </section>

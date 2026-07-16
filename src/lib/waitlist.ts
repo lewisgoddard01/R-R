@@ -1,40 +1,54 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 
-// Promotes the earliest waitlisted person for a session into a freed 'booked'
-// spot and emails them. Used both when a customer cancels and when an unpaid
-// Stripe Checkout Session expires without payment.
-export async function promoteWaitlistAndNotify(sessionId: string) {
-  const admin = createAdminClient();
-  const { data: promotedUserId } = await admin.rpc("promote_waitlist", { p_session_id: sessionId });
-  if (!promotedUserId) return;
+const BASE_URL = "https://reviveandreform.co.uk";
 
-  try {
-    const { data: userRes } = await admin.auth.admin.getUserById(promotedUserId);
-    const email = userRes?.user?.email;
-    const { data: session } = await admin
-      .from("class_sessions")
-      .select("starts_at, classes(name)")
-      .eq("id", sessionId)
-      .maybeSingle();
-    const className = (session?.classes as unknown as { name: string } | null)?.name ?? "your class";
-    const when = session?.starts_at
-      ? new Date(session.starts_at).toLocaleString("en-GB", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "";
-    if (email) {
-      await sendEmail({
-        to: email,
-        subject: `A spot opened up — you're in! (${className})`,
-        html: `<p>Good news — someone dropped out of <strong>${className}</strong> on ${when}, and you were next on the waitlist, so we've moved you into the class.</p><p>See you there! If you can no longer make it, please log in and cancel so we can offer the spot to someone else.</p><p>— Revive &amp; Reform</p>`,
-      });
-    }
-  } catch {
-    // Promotion already happened in the DB even if the email fails — don't block the caller.
-  }
+// When a spot opens up (cancellation, or an unpaid hold expiring), everyone
+// currently on that session's waitlist is emailed their own claim link.
+// Nobody's status changes here — first person to actually claim the spot
+// (see claim_waitlist_spot) gets it; the rest stay waitlisted for next time.
+export async function notifyWaitlistOfOpening(sessionId: string) {
+  const admin = createAdminClient();
+
+  const { data: waitlisted } = await admin
+    .from("bookings")
+    .select("id, user_id")
+    .eq("session_id", sessionId)
+    .eq("status", "waitlisted")
+    .order("created_at", { ascending: true });
+
+  if (!waitlisted || waitlisted.length === 0) return;
+
+  const { data: session } = await admin
+    .from("class_sessions")
+    .select("starts_at, classes(name)")
+    .eq("id", sessionId)
+    .maybeSingle();
+  const className = (session?.classes as unknown as { name: string } | null)?.name ?? "your class";
+  const when = session?.starts_at
+    ? new Date(session.starts_at).toLocaleString("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
+  await Promise.all(
+    waitlisted.map(async (booking) => {
+      try {
+        const { data: userRes } = await admin.auth.admin.getUserById(booking.user_id);
+        const email = userRes?.user?.email;
+        if (!email) return;
+        await sendEmail({
+          to: email,
+          subject: `A spot's opened up — book onto ${className}!`,
+          html: `<p>Good news — a spot just opened up in <strong>${className}</strong> on ${when}, and you're on the waitlist.</p><p>It's first come, first served, so if you'd still like it, book onto the class now:</p><p><a href="${BASE_URL}/book/claim?booking_id=${booking.id}" style="color:#EA7B2B;font-weight:600;">Book onto this class →</a></p><p>If you're no longer able to make it, no action needed — you'll stay on the waitlist for next time.</p><p>— Revive &amp; Reform</p>`,
+        });
+      } catch {
+        // One failed email shouldn't stop the others from being notified.
+      }
+    })
+  );
 }

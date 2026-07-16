@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { stripe } from "@/lib/stripe";
+import { sendSessionCancelledEmail } from "@/lib/booking-email";
+import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -91,12 +95,100 @@ export async function createSessionAction(classId: string, formData: FormData) {
   return { error: error?.message };
 }
 
+// Cancelling a whole session (studio-side — instructor ill, etc.) is
+// different from a customer cancelling their own booking: every affected
+// customer is notified, and anyone who'd paid is refunded in full
+// regardless of the 24-hour policy, since this isn't their fault.
 export async function cancelSessionAction(sessionId: string, classId: string) {
-  const supabase = await requireAdmin();
-  const { error } = await supabase.from("class_sessions").update({ status: "cancelled" }).eq("id", sessionId);
+  await requireAdmin();
+  const admin = createAdminClient();
+
+  const { error } = await admin.from("class_sessions").update({ status: "cancelled" }).eq("id", sessionId);
+  if (error) {
+    revalidatePath(`/admin/classes/${classId}`);
+    return { error: error.message };
+  }
+
+  const { data: session } = await admin
+    .from("class_sessions")
+    .select("starts_at, classes(name)")
+    .eq("id", sessionId)
+    .maybeSingle();
+  const className = (session?.classes as unknown as { name: string } | null)?.name ?? "the class";
+  const when = session?.starts_at
+    ? new Date(session.starts_at).toLocaleString("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
+  const { data: affected } = await admin
+    .from("bookings")
+    .select("id, user_id, status, payment_status, paid_via_pack_id, stripe_payment_intent_id")
+    .eq("session_id", sessionId)
+    .in("status", ["booked", "waitlisted"]);
+
+  const now = new Date().toISOString();
+  const refundFailures: string[] = [];
+
+  await Promise.all(
+    (affected ?? []).map(async (booking) => {
+      const wasBooked = booking.status === "booked";
+      let refunded = false;
+      let refundFailed = false;
+
+      await admin.from("bookings").update({ status: "cancelled", cancelled_at: now }).eq("id", booking.id);
+
+      if (wasBooked && booking.payment_status === "paid") {
+        try {
+          if (booking.paid_via_pack_id) {
+            await admin.rpc("admin_refund_pack_credit", { p_pack_id: booking.paid_via_pack_id });
+            await admin.from("bookings").update({ refunded_at: now }).eq("id", booking.id);
+          } else if (booking.stripe_payment_intent_id) {
+            await stripe.refunds.create({ payment_intent: booking.stripe_payment_intent_id });
+            await admin.from("bookings").update({ payment_status: "refunded", refunded_at: now }).eq("id", booking.id);
+          }
+          refunded = true;
+        } catch {
+          refundFailed = true;
+          refundFailures.push(booking.id);
+        }
+      }
+
+      const { data: userRes } = await admin.auth.admin.getUserById(booking.user_id);
+      const email = userRes?.user?.email;
+      if (!email) return;
+
+      const refundNote = !wasBooked
+        ? "You were on the waitlist for this class, so no payment was taken."
+        : refunded
+          ? booking.paid_via_pack_id
+            ? "Your class credit has been returned to your account."
+            : "You've been refunded in full."
+          : refundFailed
+            ? "We couldn't process your refund automatically — Alix will sort this out manually."
+            : "No payment was taken for this booking.";
+
+      await sendSessionCancelledEmail({ email, className, when, refundNote });
+    })
+  );
+
+  if (refundFailures.length > 0) {
+    await sendEmail({
+      to: ADMIN_EMAIL,
+      subject: `ACTION NEEDED — ${refundFailures.length} refund(s) failed cancelling ${className}`,
+      html: `<p>Cancelling <strong>${className}</strong> on ${when} failed to auto-refund ${refundFailures.length} booking(s). Please check and refund manually from the Stripe dashboard or admin panel. Booking IDs: ${refundFailures.join(", ")}</p>`,
+    }).catch(() => {});
+  }
+
   revalidatePath(`/admin/classes/${classId}`);
   revalidatePath("/book");
-  return { error: error?.message };
+  revalidatePath("/account/bookings");
+  revalidatePath("/admin");
+  return { error: undefined };
 }
 
 export async function updateSessionCapacityAction(sessionId: string, classId: string, capacity: number) {

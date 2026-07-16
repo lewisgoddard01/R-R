@@ -26,6 +26,7 @@ const TEAM = [
   {
     name: "Adele",
     photo: "/assets/team/adele.jpg",
+    imagePosition: "50% 20%",
     bio: "Adele has been working in the fitness industry for the last few years following a career change after years of running pubs. She is a qualified gym instructor and personal trainer, and has specialised in women's health and menopause. Adele currently runs Pilates classes in the community in Nottingham. She has a very calming energy — but don't be fooled, she knows how to deliver a killer Reformer class!",
   },
   {
@@ -36,6 +37,7 @@ const TEAM = [
   {
     name: "Laura",
     photo: "/assets/team/laura.jpg",
+    imagePosition: "50% 20%",
     bio: "Laura is our power-house pocket rocket! Working in fitness for the last few years, she teaches a range of classes and is a qualified personal trainer too. Laura teaches in the local area and has built her classes through her passion and love for fitness. We are very happy to have Laura on the team!",
   },
 ];
@@ -55,7 +57,13 @@ export default function Team() {
           {TEAM.map((m) => (
             <div className="member" key={m.name} data-reveal>
               <div className="member__photo">
-                <Image src={m.photo} alt={m.name} width={120} height={120} />
+                <Image
+                  src={m.photo}
+                  alt={m.name}
+                  width={120}
+                  height={120}
+                  style={m.imagePosition ? { objectPosition: m.imagePosition } : undefined}
+                />
               </div>
               <h3>{m.name}</h3>
               <p>{m.bio}</p>
