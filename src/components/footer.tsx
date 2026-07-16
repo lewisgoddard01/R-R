@@ -19,6 +19,8 @@ export function Footer() {
       </div>
       <p className="footer__fine">
         © {year} Revive &amp; Reform · Reformer Pilates &amp; Wellness Studio · 1D Oxford Street, Ripley, DE5 3AG
+        {" · "}
+        <Link href="/privacy">Privacy Policy</Link>
       </p>
     </footer>
   );
