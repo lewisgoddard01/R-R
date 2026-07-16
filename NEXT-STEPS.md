@@ -1,21 +1,9 @@
 # Revive & Reform — what's left to set up
 
-## Outstanding migrations (run in this order in Supabase → SQL Editor)
-- [ ] `supabase/schema_v3_payments.sql` — payment tracking columns on `bookings`.
-- [ ] `supabase/schema_v4_packs.sql` — class-pack credits (`class_packs` table).
-- [ ] `supabase/schema_v5_cancellations.sql` — cancellation/refund tracking columns.
-- [ ] `supabase/schema_v6_bundle_tiers.sql` — lets `class_packs` tell bundle tiers apart
-      (needed for the one-time welcome offer to actually be enforced as one-time).
-- [ ] `supabase/schema_v7_waitlist_claim.sql` — the "first to claim" waitlist function.
-- [ ] **`supabase/schema_v8_security_hardening.sql` — critical, run this before going live.**
-      Closes a real vulnerability where a logged-in customer could call the Supabase API
-      directly (outside the app entirely) to mark their own booking as paid for free, or
-      grant themselves admin access. See "Security" section below.
-- [ ] `supabase/schema_v9_notifications.sql` — needed for admin session-cancellation refunds
-      and the 5-hour class reminder emails (see "Notifications" section below).
-- → Copy each file's actual **contents** into the SQL Editor (not the file path) and Run.
-      Each one is safe to run even if a later step hasn't happened yet — the app degrades
-      gracefully (features just don't work) rather than crashing when a migration is missing.
+## Migrations — all done ✅
+`schema_v3` through `schema_v9` have all been run and verified (including a live exploit test
+confirming `v8`'s security fix actually blocks the vulnerabilities it's meant to). Nothing
+outstanding here.
 
 ## Security — read before publishing
 A review found and fixed two critical issues (both required a DB migration, not just app code,
@@ -49,18 +37,20 @@ since the gap was in row-level security itself):
   policy, since this is the studio's cancellation, not theirs. If a refund fails, Alix gets an
   "ACTION NEEDED" email listing which bookings need manual attention.
 - **5-hour class reminder** — a Netlify Scheduled Function (`netlify/functions/send-reminders.ts`)
-  runs every 15 minutes and emails everyone booked into a class starting in ~5 hours. Needs:
-  - [ ] Add `CRON_SECRET` to **Netlify's** environment variables (value is in `.env.local` —
-        this secret stops anyone but our own scheduled job from triggering mass reminder emails).
-  - [ ] After deploying, check Netlify's **Functions** tab shows `send-reminders` with a
-        schedule attached, to confirm it registered correctly.
+  runs every 15 minutes and emails everyone booked into a class starting in ~5 hours.
+  - [x] `CRON_SECRET` added to Netlify, function confirmed registered with its schedule in the
+        Functions tab, and the live endpoint tested directly (401 without the secret, 200 with it).
+        Fully live.
 
 ## Stripe webhook
 - [x] Test-mode webhook created, pointing at `https://reviveandreform.co.uk/api/stripe/webhook`,
       secret saved as `STRIPE_TEST_WEBHOOK_SECRET` in `.env.local` for reference.
-- [ ] Confirm `STRIPE_WEBHOOK_SECRET` is set in **Netlify's** environment variables (not just
-      `.env.local` — Netlify is what runs the live site) and redeploy after adding it.
-- [ ] Test with Stripe's test card `4242 4242 4242 4242`, any future expiry, any CVC.
+- [x] `STRIPE_WEBHOOK_SECRET` confirmed correctly set in Netlify — verified by sending a properly
+      signed test event straight to the live endpoint and getting a real `{"received":true}` back.
+- [x] Full real end-to-end test done (test card `4242 4242 4242 4242`): logged in, clicked Book,
+      paid through a genuine Stripe Checkout page, webhook fired, DB correctly marked the booking
+      paid, success page confirmed. Done via a disposable test account against local dev with
+      Stripe's test keys temporarily swapped in — the live site's keys/lockout were never touched.
 
 ### Going live (once you're ready to take real payments)
 - [ ] Complete Stripe's account activation (business details, bank account, ID verification).
