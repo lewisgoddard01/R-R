@@ -4,6 +4,7 @@ import "./globals.css";
 import { Nav } from "@/components/nav";
 import { Footer } from "@/components/footer";
 import { RevealController } from "@/components/reveal-controller";
+import { CookieNotice } from "@/components/cookie-notice";
 import { createClient } from "@/lib/supabase/server";
 
 const fraunces = Fraunces({
@@ -103,6 +104,7 @@ export default async function RootLayout({
         <Nav isLoggedIn={Boolean(user)} isAdmin={isAdmin} />
         {children}
         <Footer />
+        <CookieNotice />
         <RevealController />
       </body>
     </html>

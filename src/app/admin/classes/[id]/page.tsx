@@ -75,6 +75,14 @@ export default async function AdminClassDetail({ params }: { params: Promise<{ i
             Description
             <textarea name="description" rows={3} defaultValue={cls.description ?? ""} />
           </label>
+          <label>
+            Short overview
+            <input
+              name="short_description"
+              defaultValue={cls.short_description ?? ""}
+              placeholder="One line, shown under each slot on the timetable"
+            />
+          </label>
           <div style={{ display: "flex", gap: ".8rem" }}>
             <button type="submit" className="btn btn--primary">
               Save changes

@@ -33,6 +33,7 @@ export async function createClassAction(formData: FormData) {
   const { error } = await supabase.from("classes").insert({
     name: str(formData.get("name")),
     description: str(formData.get("description")),
+    short_description: str(formData.get("short_description")) || null,
     category: str(formData.get("category")),
     duration_min: num(formData.get("duration_min"), 50),
     default_capacity: num(formData.get("default_capacity"), 8),
@@ -50,6 +51,7 @@ export async function updateClassAction(classId: string, formData: FormData) {
     .update({
       name: str(formData.get("name")),
       description: str(formData.get("description")),
+      short_description: str(formData.get("short_description")) || null,
       category: str(formData.get("category")),
       duration_min: num(formData.get("duration_min"), 50),
       default_capacity: num(formData.get("default_capacity"), 8),

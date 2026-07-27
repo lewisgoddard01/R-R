@@ -30,11 +30,6 @@ const TEAM = [
     bio: "Adele has been working in the fitness industry for the last few years following a career change after years of running pubs. She is a qualified gym instructor and personal trainer, and has specialised in women's health and menopause. Adele currently runs Pilates classes in the community in Nottingham. She has a very calming energy — but don't be fooled, she knows how to deliver a killer Reformer class!",
   },
   {
-    name: "Melissa",
-    photo: "/assets/team/melissa.jpg",
-    bio: "Melissa is a Pilates instructor and runs her own belly dancing classes online. She has many years of experience teaching both Mat and Reformer Pilates and is currently training to teach instructors. Melissa recently moved to the area after running her own dance school in London for years, and is teaching in Leicester at the moment. We're very excited for her to bring her skills and experience to R&R, teaching a mixture of classes that are challenging with a lovely chilled vibe!",
-  },
-  {
     name: "Laura",
     photo: "/assets/team/laura.jpg",
     imagePosition: "50% 20%",

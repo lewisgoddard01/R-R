@@ -42,6 +42,13 @@ export default async function AdminClasses() {
             </label>
           </div>
           <label>
+            Short overview
+            <input
+              name="short_description"
+              placeholder="One line, shown under each slot on the timetable"
+            />
+          </label>
+          <label>
             Description
             <textarea name="description" rows={2} placeholder="Shown to customers when booking" />
           </label>

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Rule } from "@/components/rule";
 import { TodayMarker } from "@/components/today-marker";
+import { classShort } from "@/lib/class-info";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Timetable — Revive & Reform",
@@ -57,30 +59,41 @@ const WEEK: { day: string; slots: Slot[] }[] = [
       { time: "09:00", name: "Rise & Revive", who: "Karen" },
       { time: "10:00", name: "Reform Power", who: "Karen" },
       { time: "11:00", name: "Revive & Thrive", who: "Karen" },
-      { time: "16:30", name: "Revive Foundations", who: "Melissa" },
-      { time: "17:30", name: "Revive & Thrive", who: "Melissa" },
-      { time: "18:30", name: "Revive Foundations", who: "Melissa" },
+      { time: "16:30", name: "Revive Foundations" },
+      { time: "17:30", name: "Revive & Thrive" },
+      { time: "18:30", name: "Revive Foundations" },
     ],
   },
   {
     day: "Saturday",
     slots: [
-      { time: "09:00", name: "Revive Foundations", who: "Melissa" },
-      { time: "10:00", name: "Revive & Thrive", who: "Melissa" },
-      { time: "11:00", name: "Revive Foundations", who: "Melissa" },
+      { time: "09:00", name: "Revive Foundations" },
+      { time: "10:00", name: "Revive & Thrive" },
+      { time: "11:00", name: "Revive Foundations" },
     ],
   },
   {
     day: "Sunday",
     slots: [
-      { time: "11:00", name: "Revive Slow Flow", who: "Melissa" },
-      { time: "12:00", name: "Revive Foundations", who: "Melissa" },
-      { time: "13:00", name: "Revive & Thrive", who: "Melissa" },
+      { time: "11:00", name: "Revive Slow Flow" },
+      { time: "12:00", name: "Revive Foundations" },
+      { time: "13:00", name: "Revive & Thrive" },
     ],
   },
 ];
 
-export default function Timetable() {
+export default async function Timetable() {
+  // Admin-authored overviews win; anything not set in the admin falls back to
+  // the built-in copy so a slot is never left without an explanation.
+  const supabase = await createClient();
+  const { data: dbClasses } = await supabase.from("classes").select("name, short_description");
+  const adminShort = new Map(
+    (dbClasses ?? [])
+      .filter((c) => c.short_description)
+      .map((c) => [c.name as string, c.short_description as string])
+  );
+  const overview = (name: string) => adminShort.get(name) ?? classShort(name);
+
   return (
     <section className="sec page-head">
       <div className="wrap">
@@ -103,21 +116,14 @@ export default function Timetable() {
                   <time>{s.time}</time>
                   <b>{s.name}</b>
                   {s.who && <span>with {s.who}</span>}
+                  {overview(s.name) && <small className="tt-slot__desc">{overview(s.name)}</small>}
                 </Link>
               ))}
             </div>
           ))}
         </div>
 
-        <div className="prose" data-reveal style={{ marginTop: "2rem" }}>
-          <p style={{ fontSize: "0.95rem", color: "var(--muted)" }}>
-            Please double-check this timetable — your original table came through a little scrambled,
-            so I&apos;ve reconstructed it and tidied a few spellings. Send me any corrections and
-            I&apos;ll update it instantly.
-          </p>
-        </div>
-
-        <p style={{ marginTop: "1.6rem" }} data-reveal>
+        <p style={{ marginTop: "clamp(2rem,4vw,3rem)" }} data-reveal>
           <Link href="/contact" className="btn btn--ghost">
             Questions? Contact us <span className="btn__x">→</span>
           </Link>
