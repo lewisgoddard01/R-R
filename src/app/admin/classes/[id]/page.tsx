@@ -121,10 +121,10 @@ export default async function AdminClassDetail({ params }: { params: Promise<{ i
             </label>
             <label>
               Repeat weekly, for
-              <select name="repeat_weeks" defaultValue={3}>
+              <select name="repeat_weeks" defaultValue={5}>
                 <option value={1}>Just this once</option>
-                <option value={3}>3 weeks</option>
-                <option value={6}>6 weeks</option>
+                <option value={5}>5 weeks (covers the bookable month)</option>
+                <option value={8}>8 weeks</option>
                 <option value={12}>12 weeks</option>
               </select>
             </label>

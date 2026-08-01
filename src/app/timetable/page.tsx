@@ -102,7 +102,7 @@ export default async function Timetable() {
         </h1>
         <p className="lede intro" data-reveal>
           Our typical weekly schedule in Ripley. Tap any class to see real dates and book — you can
-          book up to three weeks ahead.
+          book up to a month ahead.
         </p>
         <Rule />
 

@@ -1,10 +1,22 @@
-// The studio physically opens 24 August 2026. Bookings/purchases open earlier,
-// 10 August 2026, so customers can reserve a spot ahead of opening day — but
-// not before then. Enforced server-side in every booking/purchase action (not
-// just hidden in the UI) so it can't be bypassed.
-export const BOOKINGS_OPEN_AT = new Date("2026-08-10T00:00:00+01:00");
-export const BOOKINGS_OPEN_AT_LABEL = "10 August 2026";
+// How far ahead customers may book, and whether booking is open at all.
+
+/** Bookings and purchases are open. This was previously gated behind a
+ *  pre-opening date; the gate is kept as a single switch so it can be closed
+ *  again (e.g. over a holiday shutdown) without touching every action. */
+export const BOOKINGS_ARE_OPEN = true;
+
+/** Shown to customers if bookings are ever closed again. */
+export const BOOKINGS_OPEN_AT_LABEL = "soon";
 
 export function bookingsAreOpen(): boolean {
-  return +new Date() >= +BOOKINGS_OPEN_AT;
+  return BOOKINGS_ARE_OPEN;
+}
+
+/** Customers can book up to one calendar month ahead. */
+export const BOOKING_HORIZON_LABEL = "a month";
+
+export function bookingHorizon(from: Date = new Date()): Date {
+  const horizon = new Date(from);
+  horizon.setMonth(horizon.getMonth() + 1);
+  return horizon;
 }

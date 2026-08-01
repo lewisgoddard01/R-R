@@ -3,11 +3,11 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Rule } from "@/components/rule";
 import { bookSessionAction, createCheckoutAction } from "./actions";
-import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
+import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL, bookingHorizon } from "@/lib/booking-window";
 
 export const metadata: Metadata = {
   title: "Book a class — Revive & Reform",
-  description: "Book your Reformer Pilates class at Revive & Reform, Ripley — up to 3 weeks ahead.",
+  description: "Book your Reformer Pilates class at Revive & Reform, Ripley — up to a month ahead.",
 };
 
 type SessionRow = {
@@ -77,8 +77,7 @@ export default async function Book({
   }
 
   const now = new Date();
-  const horizon = new Date();
-  horizon.setDate(horizon.getDate() + 21); // customers can book up to 3 weeks ahead
+  const horizon = bookingHorizon(now); // customers can book up to a month ahead
 
   const { data: sessions } = await supabase
     .from("class_sessions")
@@ -137,7 +136,7 @@ export default async function Book({
           Book a <em>class.</em>
         </h1>
         <p className="lede intro" data-reveal>
-          Everything on the timetable for the next three weeks. Full classes offer a waitlist — if
+          Everything on the timetable for the next month. Full classes offer a waitlist — if
           someone drops out, everyone waiting is emailed automatically so you can claim the spot.
         </p>
         <Rule />
