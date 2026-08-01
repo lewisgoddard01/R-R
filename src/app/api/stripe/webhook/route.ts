@@ -8,7 +8,10 @@ import { findBundle, PACK_VALIDITY_DAYS } from "@/lib/packs";
 
 export async function POST(req: NextRequest) {
   const signature = req.headers.get("stripe-signature");
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  // Trimmed because hosting dashboards frequently store env values with a
+  // trailing newline/space when pasted, which silently breaks signature
+  // verification. A signing secret never legitimately has surrounding space.
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
   if (!signature || !webhookSecret) {
     return NextResponse.json({ error: "Webhook not configured" }, { status: 400 });
   }
