@@ -21,30 +21,47 @@ const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satu
 export default async function Timetable() {
   const supabase = await createClient();
 
-  // Anchor the "typical week" window to the next upcoming session rather
-  // than strictly today, so the schedule still previews correctly before the
-  // studio's first live date — any 7-day span contains each weekday once, so
-  // it stays accurate once sessions are actually running too.
+  // Anchor the "typical week" window to the busiest upcoming 7-day span
+  // (not just whichever session happens to come first) so one stray/test
+  // session scheduled ahead of the real recurring schedule can't hijack the
+  // whole page and hide everything else — any 7-day span contains each
+  // weekday once, so this stays accurate once sessions are actually running.
   const now = new Date();
-  const { data: nextSession } = await supabase
-    .from("class_sessions")
-    .select("starts_at")
-    .eq("status", "scheduled")
-    .gte("starts_at", now.toISOString())
-    .order("starts_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  const windowStart = nextSession ? new Date(nextSession.starts_at) : now;
-  const windowEnd = new Date(windowStart.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const { data: sessions } = await supabase
+  const horizon = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const { data: upcoming } = await supabase
     .from("class_sessions")
     .select("starts_at, instructor, classes(name, short_description)")
     .eq("status", "scheduled")
-    .gte("starts_at", windowStart.toISOString())
-    .lte("starts_at", windowEnd.toISOString())
+    .gte("starts_at", now.toISOString())
+    .lte("starts_at", horizon.toISOString())
     .order("starts_at", { ascending: true });
 
-  const rows = (sessions ?? []) as unknown as SessionRow[];
+  const upcomingRows = (upcoming ?? []) as unknown as SessionRow[];
+
+  let windowStart = now;
+  if (upcomingRows.length > 0) {
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    let bestStart = new Date(upcomingRows[0].starts_at);
+    let bestCount = 0;
+    for (const candidate of upcomingRows) {
+      const candidateStart = new Date(candidate.starts_at);
+      const candidateEnd = new Date(candidateStart.getTime() + WEEK_MS);
+      const count = upcomingRows.filter((r) => {
+        const t = new Date(r.starts_at);
+        return t >= candidateStart && t < candidateEnd;
+      }).length;
+      if (count > bestCount) {
+        bestCount = count;
+        bestStart = candidateStart;
+      }
+    }
+    windowStart = bestStart;
+  }
+  const windowEnd = new Date(windowStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const rows = upcomingRows.filter((r) => {
+    const t = new Date(r.starts_at);
+    return t >= windowStart && t < windowEnd;
+  });
 
   const byDay = new Map<string, SessionRow[]>();
   for (const r of rows) {
