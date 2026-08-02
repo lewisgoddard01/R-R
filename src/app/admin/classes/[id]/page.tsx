@@ -5,8 +5,18 @@ import {
   deleteClassAction,
   createSessionAction,
   cancelSessionAction,
+  updateSessionAction,
 } from "@/app/admin/actions";
 import { ConfirmButton } from "@/components/confirm-button";
+
+function dateInputValue(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function timeInputValue(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export default async function AdminClassDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -39,6 +49,10 @@ export default async function AdminClassDetail({ params }: { params: Promise<{ i
   async function cancelSession(sessionId: string) {
     "use server";
     await cancelSessionAction(sessionId, id);
+  }
+  async function editSession(sessionId: string, formData: FormData) {
+    "use server";
+    await updateSessionAction(sessionId, id, formData);
   }
 
   return (
@@ -144,27 +158,39 @@ export default async function AdminClassDetail({ params }: { params: Promise<{ i
             {sessions.map((s) => {
               const booked = (s.bookings as { status: string }[]).filter((b) => b.status === "booked").length;
               const waitlisted = (s.bookings as { status: string }[]).filter((b) => b.status === "waitlisted").length;
+              const startsAt = new Date(s.starts_at);
               return (
-                <div className="admin-row" key={s.id}>
-                  <span>
-                    {new Date(s.starts_at).toLocaleString("en-GB", {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                  <span>{s.instructor || "—"}</span>
-                  <span>
+                <form
+                  action={editSession.bind(null, s.id)}
+                  className="admin-row admin-row--edit"
+                  key={s.id}
+                  style={{ display: "flex", flexWrap: "wrap", gap: ".6rem", alignItems: "center" }}
+                >
+                  <input name="date" type="date" defaultValue={dateInputValue(startsAt)} required />
+                  <input name="time" type="time" defaultValue={timeInputValue(startsAt)} required />
+                  <input
+                    name="capacity"
+                    type="number"
+                    defaultValue={s.capacity}
+                    min={1}
+                    max={40}
+                    style={{ width: "4.5rem" }}
+                  />
+                  <input name="instructor" defaultValue={s.instructor ?? ""} placeholder="Instructor" />
+                  <span style={{ fontSize: ".85rem", color: "var(--muted)" }}>
                     {booked}/{s.capacity} booked{waitlisted > 0 ? ` · ${waitlisted} waiting` : ""}
                   </span>
-                  <form action={cancelSession.bind(null, s.id)}>
-                    <ConfirmButton className="admin-link-btn" confirmText="Cancel this session? Booked customers will need to be told separately.">
-                      Cancel
-                    </ConfirmButton>
-                  </form>
-                </div>
+                  <button type="submit" className="btn btn--ghost">
+                    Save
+                  </button>
+                  <ConfirmButton
+                    className="admin-link-btn"
+                    confirmText="Cancel this session? Booked customers will need to be told separately."
+                    formAction={cancelSession.bind(null, s.id)}
+                  >
+                    Cancel
+                  </ConfirmButton>
+                </form>
               );
             })}
           </div>

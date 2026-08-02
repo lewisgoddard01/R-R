@@ -22,7 +22,20 @@ const CONDITIONS = [
   { key: "sensory", label: "Sensory disorder affecting eyes or ears" },
 ] as const;
 
-export function WaiverForm({ userId }: { userId: string }) {
+// Renders **bold** markers within a paragraph and splits paragraphs on
+// blank lines — matches the admin-editable plain-text format in site_content.
+function renderWaiverText(text: string) {
+  return text.split(/\n\s*\n/).map((para, i) => {
+    const parts = para.split(/\*\*(.+?)\*\*/g);
+    return (
+      <p style={{ marginBottom: ".9rem" }} key={i}>
+        {parts.map((part, j) => (j % 2 === 1 ? <strong key={j}>{part}</strong> : part))}
+      </p>
+    );
+  });
+}
+
+export function WaiverForm({ userId, waiverText }: { userId: string; waiverText: string }) {
   const router = useRouter();
   const supabase = createClient();
   const [busy, setBusy] = useState(false);
@@ -182,42 +195,7 @@ export function WaiverForm({ userId }: { userId: string }) {
 
       <fieldset className="fset">
         <legend>Waiver &amp; consent</legend>
-        <div className="waiver-text">
-          <p style={{ marginBottom: ".9rem" }}>
-            <strong>Confirmation of health declaration.</strong> I confirm the answers above are
-            accurate to the best of my knowledge. I will inform Revive &amp; Reform if anything
-            changes with regard to my health.
-          </p>
-          <p style={{ marginBottom: ".9rem" }}>
-            Where I have answered &ldquo;yes&rdquo; to a health question, I confirm I have spoken
-            to my GP and I am fit to take part in reformer Pilates. I accept full responsibility
-            for my medical health and fitness while participating in classes at Revive &amp;
-            Reform.
-          </p>
-          <p style={{ marginBottom: ".9rem" }}>
-            <strong>Assumption of risk.</strong> I understand that Reformer Pilates and related
-            wellness activities involve physical exertion and carry an inherent risk of injury. I
-            will work within my own limits, follow my instructor&apos;s guidance, and stop and
-            tell my instructor if I feel unwell at any point.
-          </p>
-          <p style={{ marginBottom: ".9rem" }}>
-            <strong>Release of liability.</strong> I participate in classes at Revive &amp; Reform
-            voluntarily and at my own risk. To the fullest extent permitted by law, I release
-            Revive &amp; Reform and its instructors from liability for injury, loss or damage
-            arising from my participation, except where caused by their negligence.
-          </p>
-          <p style={{ marginBottom: ".9rem" }}>
-            <strong>Medical authorisation.</strong> In an emergency, I authorise Revive &amp;
-            Reform to seek appropriate medical assistance on my behalf and to contact the
-            emergency contact named above. I give consent to Revive &amp; Reform to share
-            information with Emergency Services if required.
-          </p>
-          <p>
-            <strong>Photography &amp; video.</strong> I consent to the use of photography and
-            videography by Revive &amp; Reform for use on their social media pages. If this
-            changes, I will notify the instructor in the class at the time of recording.
-          </p>
-        </div>
+        <div className="waiver-text">{renderWaiverText(waiverText)}</div>
         <label className="check">
           <input type="checkbox" name="agree" required /> I have read and agree to the above.
         </label>

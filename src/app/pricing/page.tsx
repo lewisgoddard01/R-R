@@ -102,7 +102,7 @@ export default async function Pricing({
               Private class
               <small>One-to-one session</small>
             </span>
-            <span className="price-row__amt">£60</span>
+            <span className="price-row__amt">£40</span>
           </div>
           <div className="price-row">
             <span className="price-row__name">

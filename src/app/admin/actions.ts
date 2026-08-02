@@ -193,10 +193,35 @@ export async function cancelSessionAction(sessionId: string, classId: string) {
   return { error: undefined };
 }
 
-export async function updateSessionCapacityAction(sessionId: string, classId: string, capacity: number) {
+// ── Site content (waiver/health declaration wording, etc.) ──────────
+export async function updateSiteContentAction(key: string, formData: FormData) {
   const supabase = await requireAdmin();
-  const { error } = await supabase.from("class_sessions").update({ capacity }).eq("id", sessionId);
+  const body = str(formData.get("body"));
+  const { error } = await supabase
+    .from("site_content")
+    .upsert({ key, body, updated_at: new Date().toISOString() });
+  revalidatePath("/admin/waiver");
+  revalidatePath("/account/waiver");
+  return { error: error?.message };
+}
+
+export async function updateSessionAction(sessionId: string, classId: string, formData: FormData) {
+  const supabase = await requireAdmin();
+  const date = str(formData.get("date"));
+  const time = str(formData.get("time"));
+  const capacity = num(formData.get("capacity"), 8);
+  const instructor = str(formData.get("instructor"));
+
+  if (!date || !time) return { error: "Pick a date and time." };
+  const startsAt = new Date(`${date}T${time}:00`);
+  if (Number.isNaN(startsAt.getTime())) return { error: "That date/time isn't valid." };
+
+  const { error } = await supabase
+    .from("class_sessions")
+    .update({ starts_at: startsAt.toISOString(), capacity, instructor })
+    .eq("id", sessionId);
   revalidatePath(`/admin/classes/${classId}`);
   revalidatePath("/book");
+  revalidatePath("/timetable");
   return { error: error?.message };
 }

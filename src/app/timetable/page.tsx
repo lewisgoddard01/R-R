@@ -10,89 +10,52 @@ export const metadata: Metadata = {
   description: "Weekly Reformer Pilates timetable at Revive & Reform, Ripley, Derbyshire.",
 };
 
-type Slot = { time: string; name: string; who?: string };
+type SessionRow = {
+  starts_at: string;
+  instructor: string | null;
+  classes: { name: string; short_description: string | null } | null;
+};
 
-const WEEK: { day: string; slots: Slot[] }[] = [
-  {
-    day: "Monday",
-    slots: [
-      { time: "09:30", name: "Revive & Reform", who: "Karen" },
-      { time: "10:30", name: "Revive & Reform", who: "Karen" },
-      { time: "14:00", name: "Revive & Thrive" },
-      { time: "16:45", name: "Revive & Thrive", who: "Alix" },
-      { time: "17:45", name: "Revive Slow Flow", who: "Alix" },
-    ],
-  },
-  {
-    day: "Tuesday",
-    slots: [
-      { time: "07:00", name: "Rise & Revive", who: "Karen" },
-      { time: "13:00", name: "Revive Slow Flow", who: "Adele" },
-      { time: "14:00", name: "Revive Foundations", who: "Adele" },
-      { time: "18:00", name: "Reform Power", who: "Alix" },
-      { time: "19:00", name: "Revive Foundations", who: "Alix" },
-    ],
-  },
-  {
-    day: "Wednesday",
-    slots: [
-      { time: "09:30", name: "Revive Foundations", who: "Laura" },
-      { time: "10:30", name: "Reform Power", who: "Laura" },
-      { time: "18:00", name: "Revive Slow Flow", who: "Adele" },
-      { time: "19:00", name: "Reform Power", who: "Adele" },
-    ],
-  },
-  {
-    day: "Thursday",
-    slots: [
-      { time: "07:00", name: "Rise & Revive", who: "Karen" },
-      { time: "08:00", name: "Revive & Reform", who: "Karen" },
-      { time: "13:30", name: "Revive Foundations", who: "Alix" },
-      { time: "18:00", name: "Revive Foundations", who: "Adele" },
-      { time: "19:00", name: "Revive Slow Flow", who: "Adele" },
-    ],
-  },
-  {
-    day: "Friday",
-    slots: [
-      { time: "07:00", name: "Revive & Reform", who: "Alix" },
-      { time: "09:00", name: "Rise & Revive", who: "Karen" },
-      { time: "10:00", name: "Reform Power", who: "Karen" },
-      { time: "11:00", name: "Revive & Thrive", who: "Karen" },
-      { time: "16:30", name: "Revive Foundations" },
-      { time: "17:30", name: "Revive & Thrive" },
-      { time: "18:30", name: "Revive Foundations" },
-    ],
-  },
-  {
-    day: "Saturday",
-    slots: [
-      { time: "09:00", name: "Revive Foundations" },
-      { time: "10:00", name: "Revive & Thrive" },
-      { time: "11:00", name: "Revive Foundations" },
-    ],
-  },
-  {
-    day: "Sunday",
-    slots: [
-      { time: "11:00", name: "Revive Slow Flow" },
-      { time: "12:00", name: "Revive Foundations" },
-      { time: "13:00", name: "Revive & Thrive" },
-    ],
-  },
-];
+const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export default async function Timetable() {
+  const supabase = await createClient();
+
+  // Anchor the "typical week" window to the next upcoming session rather
+  // than strictly today, so the schedule still previews correctly before the
+  // studio's first live date — any 7-day span contains each weekday once, so
+  // it stays accurate once sessions are actually running too.
+  const now = new Date();
+  const { data: nextSession } = await supabase
+    .from("class_sessions")
+    .select("starts_at")
+    .eq("status", "scheduled")
+    .gte("starts_at", now.toISOString())
+    .order("starts_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const windowStart = nextSession ? new Date(nextSession.starts_at) : now;
+  const windowEnd = new Date(windowStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const { data: sessions } = await supabase
+    .from("class_sessions")
+    .select("starts_at, instructor, classes(name, short_description)")
+    .eq("status", "scheduled")
+    .gte("starts_at", windowStart.toISOString())
+    .lte("starts_at", windowEnd.toISOString())
+    .order("starts_at", { ascending: true });
+
+  const rows = (sessions ?? []) as unknown as SessionRow[];
+
+  const byDay = new Map<string, SessionRow[]>();
+  for (const r of rows) {
+    const day = new Date(r.starts_at).toLocaleDateString("en-GB", { weekday: "long" });
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day)!.push(r);
+  }
+
   // Admin-authored overviews win; anything not set in the admin falls back to
   // the built-in copy so a slot is never left without an explanation.
-  const supabase = await createClient();
-  const { data: dbClasses } = await supabase.from("classes").select("name, short_description");
-  const adminShort = new Map(
-    (dbClasses ?? [])
-      .filter((c) => c.short_description)
-      .map((c) => [c.name as string, c.short_description as string])
-  );
-  const overview = (name: string) => adminShort.get(name) ?? classShort(name);
+  const overview = (name: string, short: string | null) => short ?? classShort(name);
 
   return (
     <section className="sec page-head">
@@ -108,19 +71,34 @@ export default async function Timetable() {
 
         <TodayMarker />
         <div className="tt-grid" data-reveal>
-          {WEEK.map((d) => (
-            <div className="tt-day" data-day={d.day} key={d.day}>
-              <h3>{d.day}</h3>
-              {d.slots.map((s, i) => (
-                <Link className="tt-slot" key={`${s.time}-${i}`} href="/book">
-                  <time>{s.time}</time>
-                  <b>{s.name}</b>
-                  {s.who && <span>with {s.who}</span>}
-                  {overview(s.name) && <small className="tt-slot__desc">{overview(s.name)}</small>}
-                </Link>
-              ))}
-            </div>
-          ))}
+          {DAY_ORDER.map((day) => {
+            const slots = byDay.get(day) ?? [];
+            return (
+              <div className="tt-day" data-day={day} key={day}>
+                <h3>{day}</h3>
+                {slots.length === 0 && <p className="admin-empty">No classes</p>}
+                {slots.map((s, i) => {
+                  const time = new Date(s.starts_at).toLocaleTimeString("en-GB", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                  const name = s.classes?.name ?? "";
+                  return (
+                    <Link className="tt-slot" key={`${s.starts_at}-${i}`} href="/book">
+                      <time>{time}</time>
+                      <b>{name}</b>
+                      {s.instructor && <span>with {s.instructor}</span>}
+                      {overview(name, s.classes?.short_description ?? null) && (
+                        <small className="tt-slot__desc">
+                          {overview(name, s.classes?.short_description ?? null)}
+                        </small>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
 
         <p style={{ marginTop: "clamp(2rem,4vw,3rem)" }} data-reveal>

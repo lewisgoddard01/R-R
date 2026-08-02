@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { WaiverForm } from "@/components/waiver-form";
+import { DEFAULT_WAIVER_TEXT } from "@/lib/waiver-content";
 
 export default async function WaiverPage() {
   const supabase = await createClient();
@@ -8,6 +9,13 @@ export default async function WaiverPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const { data: content } = await supabase
+    .from("site_content")
+    .select("body")
+    .eq("key", "waiver_declaration")
+    .maybeSingle();
+  const waiverText = content?.body || DEFAULT_WAIVER_TEXT;
 
   return (
     <section className="sec page-head">
@@ -19,7 +27,7 @@ export default async function WaiverPage() {
           A quick one-off form so we can keep you safe in class. Once it&apos;s done, you can book
           any class without filling it in again.
         </p>
-        <WaiverForm userId={user.id} />
+        <WaiverForm userId={user.id} waiverText={waiverText} />
       </div>
     </section>
   );
