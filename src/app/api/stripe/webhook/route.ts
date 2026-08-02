@@ -37,30 +37,43 @@ export async function POST(req: NextRequest) {
       const expiresAt = new Date(Date.now() + PACK_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
       if (userId) {
-        await admin.from("class_packs").insert({
-          user_id: userId,
-          kind: bundle.kind,
-          classes_total: bundle.classes,
-          classes_remaining: bundle.classes,
-          price_paid_pence: session.amount_total ?? 0,
-          stripe_checkout_session_id: session.id,
-          stripe_payment_intent_id: paymentIntentId,
-          expires_at: expiresAt,
-        });
+        // Stripe retries this webhook on timeout/5xx — without this check a
+        // retried event would insert a second class_packs row and give the
+        // customer double credits for one payment. A unique index on
+        // stripe_checkout_session_id (see schema_v12) backs this up at the
+        // DB level too.
+        const { data: existingPack } = await admin
+          .from("class_packs")
+          .select("id")
+          .eq("stripe_checkout_session_id", session.id)
+          .maybeSingle();
 
-        const { data: userRes } = await admin.auth.admin.getUserById(userId);
-        const email = userRes?.user?.email;
-        if (email) {
-          await sendEmail({
-            to: email,
-            subject: `Your ${bundle.label} is ready`,
-            html: `<p>Payment received — you now have <strong>${bundle.classes} classes</strong> to use, valid for ${PACK_VALIDITY_DAYS} days. Just book as normal and a credit will be used automatically instead of taking payment.</p><p>— Revive &amp; Reform</p>`,
-          }).catch(() => {});
-          await sendEmail({
-            to: ADMIN_EMAIL,
-            subject: `New ${bundle.label} purchased`,
-            html: `<p>${email} just bought a ${bundle.label} bundle.</p>`,
-          }).catch(() => {});
+        if (!existingPack) {
+          await admin.from("class_packs").insert({
+            user_id: userId,
+            kind: bundle.kind,
+            classes_total: bundle.classes,
+            classes_remaining: bundle.classes,
+            price_paid_pence: session.amount_total ?? 0,
+            stripe_checkout_session_id: session.id,
+            stripe_payment_intent_id: paymentIntentId,
+            expires_at: expiresAt,
+          });
+
+          const { data: userRes } = await admin.auth.admin.getUserById(userId);
+          const email = userRes?.user?.email;
+          if (email) {
+            await sendEmail({
+              to: email,
+              subject: `Your ${bundle.label} is ready`,
+              html: `<p>Payment received — you now have <strong>${bundle.classes} classes</strong> to use, valid for ${PACK_VALIDITY_DAYS} days. Just book as normal and a credit will be used automatically instead of taking payment.</p><p>— Revive &amp; Reform</p>`,
+            }).catch(() => {});
+            await sendEmail({
+              to: ADMIN_EMAIL,
+              subject: `New ${bundle.label} purchased`,
+              html: `<p>${email} just bought a ${bundle.label} bundle.</p>`,
+            }).catch(() => {});
+          }
         }
       }
       return NextResponse.json({ received: true });

@@ -11,7 +11,8 @@ alter table public.site_content enable row level security;
 -- Anyone can read (the waiver page is shown to logged-in customers), only
 -- admins can write (enforced in the server action via requireAdmin(), same
 -- pattern as classes/sessions — RLS just blocks direct client writes).
-create policy if not exists "site_content readable by all"
+drop policy if exists "site_content readable by all" on public.site_content;
+create policy "site_content readable by all"
   on public.site_content for select
   using (true);
 

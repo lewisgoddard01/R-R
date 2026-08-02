@@ -71,6 +71,7 @@ export function WaiverForm({ userId, waiverText }: { userId: string; waiverText:
       emergencyName: get("emergencyName"),
       emergencyPhone: get("emergencyPhone"),
       signature: get("signature"),
+      photoConsent: f.get("photoConsent") === "on",
     };
     const now = new Date().toISOString();
 
@@ -197,7 +198,13 @@ export function WaiverForm({ userId, waiverText }: { userId: string; waiverText:
         <legend>Waiver &amp; consent</legend>
         <div className="waiver-text">{renderWaiverText(waiverText)}</div>
         <label className="check">
-          <input type="checkbox" name="agree" required /> I have read and agree to the above.
+          <input type="checkbox" name="agree" required /> I have read and agree to the health
+          declaration, assumption of risk, release of liability and medical authorisation above.
+        </label>
+        <label className="check" style={{ marginTop: ".6rem" }}>
+          <input type="checkbox" name="photoConsent" /> I separately consent to photography and
+          video of me being used by Revive &amp; Reform on their social media (optional — you can
+          still book classes without this).
         </label>
         <div className="field" style={{ marginTop: "1rem" }}>
           <label htmlFor="signature">Type your full name to sign</label>

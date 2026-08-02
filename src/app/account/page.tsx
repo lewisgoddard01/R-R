@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { LogoutButton } from "@/components/logout-button";
+import { ConfirmButton } from "@/components/confirm-button";
+import { deleteAccountAction } from "@/app/account/actions";
 
 export default async function Account({
   searchParams,
@@ -35,6 +37,11 @@ export default async function Account({
 
   const firstName = (profile?.full_name || user.email || "").split(" ")[0];
   const waiverDone = Boolean(profile?.waiver_signed_at && profile?.health_completed_at);
+
+  async function deleteAccount() {
+    "use server";
+    await deleteAccountAction();
+  }
 
   return (
     <section className="sec page-head">
@@ -108,6 +115,15 @@ export default async function Account({
           </Link>
           <LogoutButton />
         </div>
+
+        <form action={deleteAccount} style={{ marginTop: "2.5rem" }}>
+          <ConfirmButton
+            className="admin-link-btn"
+            confirmText="Delete your account and all your data (bookings, health form, class credits)? This can't be undone."
+          >
+            Delete my account
+          </ConfirmButton>
+        </form>
       </div>
     </section>
   );

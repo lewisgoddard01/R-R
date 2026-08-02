@@ -7,7 +7,11 @@ import { createClient } from "@/lib/supabase/client";
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/account";
+  const rawNext = searchParams.get("next");
+  // Only ever follow a same-origin relative path — a bare "/" prevents
+  // "//evil.example" (protocol-relative) and "https://evil.example" from
+  // ever being used as an open redirect via a crafted login link.
+  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/account";
   const supabase = createClient();
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [name, setName] = useState("");
