@@ -73,7 +73,7 @@ export async function deleteClassAction(classId: string) {
 }
 
 // ── Sessions (dated occurrences) ────────────────────────────────────
-export async function createSessionAction(classId: string, formData: FormData) {
+async function insertSessions(classId: string, formData: FormData) {
   const supabase = await requireAdmin();
   const date = str(formData.get("date"));
   const time = str(formData.get("time"));
@@ -81,6 +81,7 @@ export async function createSessionAction(classId: string, formData: FormData) {
   const instructor = str(formData.get("instructor"));
   const repeatWeeks = Math.max(1, num(formData.get("repeat_weeks"), 1));
 
+  if (!classId) return { error: "Pick a class." };
   if (!date || !time) return { error: "Pick a date and time." };
   const startsAt = new Date(`${date}T${time}:00`);
   if (Number.isNaN(startsAt.getTime())) return { error: "That date/time isn't valid." };
@@ -93,8 +94,21 @@ export async function createSessionAction(classId: string, formData: FormData) {
 
   const { error } = await supabase.from("class_sessions").insert(rows);
   revalidatePath(`/admin/classes/${classId}`);
+  revalidatePath("/admin/timetable");
   revalidatePath("/book");
+  revalidatePath("/timetable");
   return { error: error?.message };
+}
+
+export async function createSessionAction(classId: string, formData: FormData) {
+  return insertSessions(classId, formData);
+}
+
+// Same as createSessionAction, but for the unified /admin/timetable page
+// where the class is picked from a dropdown inside the form itself rather
+// than being fixed by which class's page you're on.
+export async function addTimetableSessionAction(formData: FormData) {
+  return insertSessions(str(formData.get("class_id")), formData);
 }
 
 // Cancelling a whole session (studio-side — instructor ill, etc.) is
@@ -187,7 +201,9 @@ export async function cancelSessionAction(sessionId: string, classId: string) {
   }
 
   revalidatePath(`/admin/classes/${classId}`);
+  revalidatePath("/admin/timetable");
   revalidatePath("/book");
+  revalidatePath("/timetable");
   revalidatePath("/account/bookings");
   revalidatePath("/admin");
   return { error: undefined };
@@ -221,6 +237,7 @@ export async function updateSessionAction(sessionId: string, classId: string, fo
     .update({ starts_at: startsAt.toISOString(), capacity, instructor })
     .eq("id", sessionId);
   revalidatePath(`/admin/classes/${classId}`);
+  revalidatePath("/admin/timetable");
   revalidatePath("/book");
   revalidatePath("/timetable");
   return { error: error?.message };
