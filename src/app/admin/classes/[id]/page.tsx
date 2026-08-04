@@ -134,13 +134,9 @@ export default async function AdminClassDetail({ params }: { params: Promise<{ i
               <input name="instructor" placeholder="e.g. Alix" />
             </label>
             <label>
-              Repeat weekly, for
-              <select name="repeat_weeks" defaultValue={5}>
-                <option value={1}>Just this once</option>
-                <option value={5}>5 weeks (covers the bookable month)</option>
-                <option value={8}>8 weeks</option>
-                <option value={12}>12 weeks</option>
-              </select>
+              Repeat weekly, for how many weeks?
+              <input name="repeat_weeks" type="number" defaultValue={5} min={1} max={52} required />
+              <small style={{ color: "var(--muted)" }}>1 = just this once. Any number up to 52 works.</small>
             </label>
           </div>
           <button type="submit" className="btn btn--primary">

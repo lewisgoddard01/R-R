@@ -124,13 +124,9 @@ export default async function AdminTimetable({
                 <input name="instructor" placeholder="e.g. Alix" required />
               </label>
               <label>
-                Repeat weekly, for
-                <select name="repeat_weeks" defaultValue={1}>
-                  <option value={1}>Just this once</option>
-                  <option value={5}>5 weeks</option>
-                  <option value={8}>8 weeks</option>
-                  <option value={12}>12 weeks</option>
-                </select>
+                Repeat weekly, for how many weeks?
+                <input name="repeat_weeks" type="number" defaultValue={1} min={1} max={52} required />
+                <small style={{ color: "var(--muted)" }}>1 = just this once. Any number up to 52 works.</small>
               </label>
             </div>
             <button type="submit" className="btn btn--primary">
