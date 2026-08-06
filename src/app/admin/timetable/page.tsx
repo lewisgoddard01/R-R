@@ -3,8 +3,11 @@ import {
   addTimetableSessionAction,
   updateSessionAction,
   cancelSessionAction,
+  bulkCancelWeekdayAction,
 } from "@/app/admin/actions";
 import { ConfirmButton } from "@/components/confirm-button";
+
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function dateInputValue(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -28,9 +31,9 @@ type SessionRow = {
 export default async function AdminTimetable({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; removed?: string }>;
 }) {
-  const { error: errorMsg } = await searchParams;
+  const { error: errorMsg, removed } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: classes }, { data: sessions }] = await Promise.all([
@@ -78,6 +81,13 @@ export default async function AdminTimetable({
   async function cancelSession(sessionId: string, classId: string) {
     "use server";
     await cancelSessionAction(sessionId, classId);
+  }
+  async function removeWeekday(formData: FormData) {
+    "use server";
+    const { redirect } = await import("next/navigation");
+    const result = await bulkCancelWeekdayAction(formData);
+    if (result.error) redirect(`/admin/timetable?error=${encodeURIComponent(result.error)}`);
+    redirect(`/admin/timetable?removed=${result.cancelledCount ?? 0}`);
   }
 
   return (
@@ -137,6 +147,35 @@ export default async function AdminTimetable({
       </div>
 
       <div className="admin-card" style={{ marginTop: "1.5rem" }}>
+        <h3>Remove a whole day</h3>
+        <p className="admin-empty">
+          Takes every upcoming class off that weekday in one go — e.g. to stop running Sunday
+          classes. Booked customers are automatically emailed and refunded, same as cancelling one
+          class.
+        </p>
+        {removed !== undefined && !errorMsg && (
+          <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>
+            {removed === "0" ? "Nothing was scheduled on that day." : `Removed ${removed} class(es).`}
+          </p>
+        )}
+        <form action={removeWeekday} style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap" }}>
+          <select name="weekday" required>
+            {WEEKDAY_NAMES.map((d) => (
+              <option value={d} key={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+          <ConfirmButton
+            className="btn btn--ghost"
+            confirmText="Remove every upcoming class on this day? Booked customers will be emailed and refunded automatically. This can't be undone."
+          >
+            Remove all classes on this day
+          </ConfirmButton>
+        </form>
+      </div>
+
+      <div className="admin-card" style={{ marginTop: "1.5rem" }}>
         <h3>Upcoming timetable</h3>
         {byDate.size === 0 ? (
           <p className="admin-empty">Nothing scheduled yet — add a session above.</p>
@@ -156,14 +195,13 @@ export default async function AdminTimetable({
                       key={s.id}
                       style={{ display: "flex", flexWrap: "wrap", gap: ".6rem", alignItems: "center" }}
                     >
-                      <div style={{ minWidth: "10rem" }}>
-                        <b>{s.classes?.name}</b>
-                        {s.classes?.short_description && (
-                          <div style={{ fontSize: ".78rem", color: "var(--muted)" }}>
-                            {s.classes.short_description}
-                          </div>
-                        )}
-                      </div>
+                      <select name="class_id" defaultValue={s.class_id} style={{ minWidth: "10rem" }}>
+                        {classes?.map((c) => (
+                          <option value={c.id} key={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
                       <input name="date" type="date" defaultValue={dateInputValue(startsAt)} required />
                       <input name="time" type="time" defaultValue={timeInputValue(startsAt)} required />
                       <input

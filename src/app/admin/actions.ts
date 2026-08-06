@@ -111,19 +111,13 @@ export async function addTimetableSessionAction(formData: FormData) {
   return insertSessions(str(formData.get("class_id")), formData);
 }
 
-// Cancelling a whole session (studio-side — instructor ill, etc.) is
-// different from a customer cancelling their own booking: every affected
-// customer is notified, and anyone who'd paid is refunded in full
-// regardless of the 24-hour policy, since this isn't their fault.
-export async function cancelSessionAction(sessionId: string, classId: string) {
-  await requireAdmin();
-  const admin = createAdminClient();
-
+// Shared by cancelSessionAction (one session) and bulkCancelWeekdayAction
+// (many at once) — every affected customer is notified, and anyone who'd
+// paid is refunded in full regardless of the 24-hour policy, since a
+// studio-side cancellation isn't their fault.
+async function cancelSessionCore(admin: ReturnType<typeof createAdminClient>, sessionId: string) {
   const { error } = await admin.from("class_sessions").update({ status: "cancelled" }).eq("id", sessionId);
-  if (error) {
-    revalidatePath(`/admin/classes/${classId}`);
-    return { error: error.message };
-  }
+  if (error) return { error: error.message };
 
   const { data: session } = await admin
     .from("class_sessions")
@@ -200,13 +194,55 @@ export async function cancelSessionAction(sessionId: string, classId: string) {
     }).catch(() => {});
   }
 
+  return { error: undefined };
+}
+
+export async function cancelSessionAction(sessionId: string, classId: string) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const result = await cancelSessionCore(admin, sessionId);
+
   revalidatePath(`/admin/classes/${classId}`);
   revalidatePath("/admin/timetable");
   revalidatePath("/book");
   revalidatePath("/timetable");
   revalidatePath("/account/bookings");
   revalidatePath("/admin");
-  return { error: undefined };
+  return result;
+}
+
+// Bulk version for "take the Sunday classes off the timetable" style
+// changes — cancels every future scheduled session that falls on the given
+// weekday, across all classes, using the same per-customer refund/notify
+// logic as cancelling one session at a time.
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+export async function bulkCancelWeekdayAction(formData: FormData) {
+  await requireAdmin();
+  const weekday = str(formData.get("weekday"));
+  const dayIndex = WEEKDAYS.indexOf(weekday);
+  if (dayIndex === -1) return { error: "Pick a day." };
+
+  const admin = createAdminClient();
+  const { data: sessions } = await admin
+    .from("class_sessions")
+    .select("id, starts_at")
+    .eq("status", "scheduled")
+    .gte("starts_at", new Date().toISOString());
+
+  const matching = (sessions ?? []).filter((s) => new Date(s.starts_at).getDay() === dayIndex);
+
+  for (const s of matching) {
+    await cancelSessionCore(admin, s.id);
+  }
+
+  revalidatePath("/admin/classes");
+  revalidatePath("/admin/timetable");
+  revalidatePath("/book");
+  revalidatePath("/timetable");
+  revalidatePath("/account/bookings");
+  revalidatePath("/admin");
+  return { error: undefined, cancelledCount: matching.length };
 }
 
 // ── Site content (waiver/health declaration wording, etc.) ──────────
@@ -227,6 +263,9 @@ export async function updateSessionAction(sessionId: string, classId: string, fo
   const time = str(formData.get("time"));
   const capacity = num(formData.get("capacity"), 8);
   const instructor = str(formData.get("instructor"));
+  // Optional — lets an admin reassign which class this session actually is
+  // (e.g. swapping what runs in a slot) without deleting and re-adding it.
+  const newClassId = str(formData.get("class_id")) || classId;
 
   if (!date || !time) return { error: "Pick a date and time." };
   const startsAt = new Date(`${date}T${time}:00`);
@@ -234,9 +273,10 @@ export async function updateSessionAction(sessionId: string, classId: string, fo
 
   const { error } = await supabase
     .from("class_sessions")
-    .update({ starts_at: startsAt.toISOString(), capacity, instructor })
+    .update({ starts_at: startsAt.toISOString(), capacity, instructor, class_id: newClassId })
     .eq("id", sessionId);
   revalidatePath(`/admin/classes/${classId}`);
+  revalidatePath(`/admin/classes/${newClassId}`);
   revalidatePath("/admin/timetable");
   revalidatePath("/book");
   revalidatePath("/timetable");
