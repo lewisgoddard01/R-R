@@ -4,6 +4,7 @@ import {
   updateSessionAction,
   cancelSessionAction,
   bulkCancelWeekdayAction,
+  addFreeBookingAction,
 } from "@/app/admin/actions";
 import { ConfirmButton } from "@/components/confirm-button";
 
@@ -81,6 +82,14 @@ export default async function AdminTimetable({
   async function cancelSession(sessionId: string, classId: string) {
     "use server";
     await cancelSessionAction(sessionId, classId);
+  }
+  async function addFree(sessionId: string, classId: string, formData: FormData) {
+    "use server";
+    const { error } = await addFreeBookingAction(sessionId, classId, formData);
+    if (error) {
+      const { redirect } = await import("next/navigation");
+      redirect(`/admin/timetable?error=${encodeURIComponent(error)}`);
+    }
   }
   async function removeWeekday(formData: FormData) {
     "use server";
@@ -189,44 +198,59 @@ export default async function AdminTimetable({
                   const booked = s.bookings.filter((b) => b.status === "booked").length;
                   const waitlisted = s.bookings.filter((b) => b.status === "waitlisted").length;
                   return (
-                    <form
-                      action={editSession.bind(null, s.id, s.class_id)}
-                      className="admin-row"
-                      key={s.id}
-                      style={{ display: "flex", flexWrap: "wrap", gap: ".6rem", alignItems: "center" }}
-                    >
-                      <select name="class_id" defaultValue={s.class_id} style={{ minWidth: "10rem" }}>
-                        {classes?.map((c) => (
-                          <option value={c.id} key={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                      <input name="date" type="date" defaultValue={dateInputValue(startsAt)} required />
-                      <input name="time" type="time" defaultValue={timeInputValue(startsAt)} required />
-                      <input
-                        name="capacity"
-                        type="number"
-                        defaultValue={s.capacity}
-                        min={1}
-                        max={40}
-                        style={{ width: "4.5rem" }}
-                      />
-                      <input name="instructor" defaultValue={s.instructor ?? ""} placeholder="Instructor" />
-                      <span style={{ fontSize: ".85rem", color: "var(--muted)" }}>
-                        {booked}/{s.capacity} booked{waitlisted > 0 ? ` · ${waitlisted} waiting` : ""}
-                      </span>
-                      <button type="submit" className="btn btn--ghost">
-                        Save
-                      </button>
-                      <ConfirmButton
-                        className="admin-link-btn"
-                        confirmText="Cancel this session? Booked customers will need to be told separately."
-                        formAction={cancelSession.bind(null, s.id, s.class_id)}
+                    <div className="admin-row" key={s.id} style={{ display: "block" }}>
+                      <form
+                        action={editSession.bind(null, s.id, s.class_id)}
+                        style={{ display: "flex", flexWrap: "wrap", gap: ".6rem", alignItems: "center" }}
                       >
-                        Cancel
-                      </ConfirmButton>
-                    </form>
+                        <select name="class_id" defaultValue={s.class_id} style={{ minWidth: "10rem" }}>
+                          {classes?.map((c) => (
+                            <option value={c.id} key={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                        <input name="date" type="date" defaultValue={dateInputValue(startsAt)} required />
+                        <input name="time" type="time" defaultValue={timeInputValue(startsAt)} required />
+                        <input
+                          name="capacity"
+                          type="number"
+                          defaultValue={s.capacity}
+                          min={1}
+                          max={40}
+                          style={{ width: "4.5rem" }}
+                        />
+                        <input name="instructor" defaultValue={s.instructor ?? ""} placeholder="Instructor" />
+                        <span style={{ fontSize: ".85rem", color: "var(--muted)" }}>
+                          {booked}/{s.capacity} booked{waitlisted > 0 ? ` · ${waitlisted} waiting` : ""}
+                        </span>
+                        <button type="submit" className="btn btn--ghost">
+                          Save
+                        </button>
+                        <ConfirmButton
+                          className="admin-link-btn"
+                          confirmText="Cancel this session? Booked customers will need to be told separately."
+                          formAction={cancelSession.bind(null, s.id, s.class_id)}
+                        >
+                          Cancel
+                        </ConfirmButton>
+                      </form>
+                      <form
+                        action={addFree.bind(null, s.id, s.class_id)}
+                        style={{ display: "flex", gap: ".5rem", alignItems: "center", width: "100%", marginTop: ".4rem" }}
+                      >
+                        <input
+                          name="email"
+                          type="email"
+                          placeholder="Customer's email — add them for free"
+                          style={{ flex: "1 1 16rem" }}
+                          required
+                        />
+                        <button type="submit" className="btn btn--ghost" style={{ fontSize: ".82rem" }}>
+                          Add for free
+                        </button>
+                      </form>
+                    </div>
                   );
                 })}
               </div>

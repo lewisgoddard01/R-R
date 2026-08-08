@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
-import { sendSessionCancelledEmail } from "@/lib/booking-email";
+import { sendSessionCancelledEmail, sendBookingConfirmationEmail } from "@/lib/booking-email";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 
 async function requireAdmin() {
@@ -243,6 +243,77 @@ export async function bulkCancelWeekdayAction(formData: FormData) {
   revalidatePath("/account/bookings");
   revalidatePath("/admin");
   return { error: undefined, cancelledCount: matching.length };
+}
+
+// Lets an admin add an existing customer onto a class for free — comps,
+// manual phone bookings, goodwill after a mix-up, etc. Recorded as
+// payment_status 'comped' (not 'paid', so it's never counted as revenue;
+// not 'unpaid', so it's never auto-released as an abandoned checkout).
+export async function addFreeBookingAction(sessionId: string, classId: string, formData: FormData) {
+  await requireAdmin();
+  const email = str(formData.get("email")).toLowerCase();
+  if (!email) return { error: "Enter the customer's email." };
+
+  const admin = createAdminClient();
+
+  let matchedUserId: string | null = null;
+  let matchedEmail: string | null = null;
+  let page = 1;
+  while (!matchedUserId) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) return { error: error.message };
+    const hit = data.users.find((u) => u.email?.toLowerCase() === email);
+    if (hit) {
+      matchedUserId = hit.id;
+      matchedEmail = hit.email ?? email;
+      break;
+    }
+    if (data.users.length < 1000) break; // last page
+    page++;
+  }
+  if (!matchedUserId) {
+    return { error: "No account found with that email — they need to sign up first." };
+  }
+
+  const { data: existing } = await admin
+    .from("bookings")
+    .select("id")
+    .eq("session_id", sessionId)
+    .eq("user_id", matchedUserId)
+    .in("status", ["booked", "waitlisted"])
+    .maybeSingle();
+  if (existing) return { error: "That customer already has a spot (or a waitlist place) for this class." };
+
+  const { error: insertError } = await admin.from("bookings").insert({
+    session_id: sessionId,
+    user_id: matchedUserId,
+    status: "booked",
+    payment_status: "comped",
+  });
+  if (insertError) return { error: insertError.message };
+
+  const { data: session } = await admin
+    .from("class_sessions")
+    .select("starts_at, classes(name)")
+    .eq("id", sessionId)
+    .maybeSingle();
+  const className = (session?.classes as unknown as { name: string } | null)?.name ?? "the class";
+  const when = session?.starts_at
+    ? new Date(session.starts_at).toLocaleString("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+  await sendBookingConfirmationEmail({ email: matchedEmail!, className, when });
+
+  revalidatePath(`/admin/classes/${classId}`);
+  revalidatePath("/admin/timetable");
+  revalidatePath("/book");
+  revalidatePath("/account/bookings");
+  return { error: undefined };
 }
 
 // ── Site content (waiver/health declaration wording, etc.) ──────────
