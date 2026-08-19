@@ -3,24 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { CONDITIONS } from "@/lib/health-questionnaire";
 
 const YES_NO = ["No", "Yes"] as const;
-
-const CONDITIONS = [
-  { key: "abdominal", label: "Abdominal disorder or recent surgery" },
-  { key: "arthritis", label: "Arthritis (osteo or rheumatoid)" },
-  { key: "backPain", label: "Unspecified back pain" },
-  { key: "spinalInjury", label: "Spinal injury" },
-  { key: "jointReplacement", label: "Joint replacement" },
-  { key: "jointSensitivity", label: "Knee, hip, shoulder or neck sensitivities" },
-  { key: "respiratory", label: "Asthma or other respiratory issues" },
-  { key: "epilepsy", label: "Epilepsy" },
-  { key: "diabetes", label: "Diabetes" },
-  { key: "autoimmune", label: "Auto-immune disorder (e.g. M.E., M.S., Lupus)" },
-  { key: "anxietyDepression", label: "Anxiety or depression" },
-  { key: "migraine", label: "Migraine" },
-  { key: "sensory", label: "Sensory disorder affecting eyes or ears" },
-] as const;
 
 // Renders **bold** markers within a paragraph and splits paragraphs on
 // blank lines — matches the admin-editable plain-text format in site_content.

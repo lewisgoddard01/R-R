@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   addTimetableSessionAction,
@@ -224,6 +225,9 @@ export default async function AdminTimetable({
                         <span style={{ fontSize: ".85rem", color: "var(--muted)" }}>
                           {booked}/{s.capacity} booked{waitlisted > 0 ? ` · ${waitlisted} waiting` : ""}
                         </span>
+                        <Link href={`/admin/roster/${s.id}`} className="admin-link-btn">
+                          View list
+                        </Link>
                         <button type="submit" className="btn btn--ghost">
                           Save
                         </button>
