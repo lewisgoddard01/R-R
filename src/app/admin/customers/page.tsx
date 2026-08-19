@@ -15,12 +15,15 @@ export default async function AdminCustomers() {
 
   const emailById = new Map(usersPage?.users.map((u) => [u.id, u.email ?? ""]) ?? []);
 
-  const rows = (profiles ?? []).map((p) => ({
-    ...p,
-    email: emailById.get(p.id) ?? "",
-    waiverDone: Boolean(p.waiver_signed_at && p.health_completed_at),
-    flagged: hasHealthFlags(p.health as never),
-  }));
+  const rows = (profiles ?? []).map((p) => {
+    const questionnaireDone = Boolean(p.waiver_signed_at && p.health_completed_at);
+    return {
+      ...p,
+      email: emailById.get(p.id) ?? "",
+      status: questionnaireDone && p.phone ? "complete" : questionnaireDone ? "missingPhone" : "notDone",
+      flagged: hasHealthFlags(p.health as never),
+    };
+  });
 
   return (
     <div className="admin-card" style={{ marginTop: "2rem" }}>
@@ -41,8 +44,12 @@ export default async function AdminCustomers() {
                 {r.email}
                 {r.phone && <div style={{ fontSize: ".82rem" }}>{r.phone}</div>}
               </span>
-              <span className={r.waiverDone ? "admin-badge admin-badge--on" : "admin-badge"}>
-                {r.waiverDone ? "Waiver complete" : "Not completed"}
+              <span className={r.status === "complete" ? "admin-badge admin-badge--on" : "admin-badge"}>
+                {r.status === "complete"
+                  ? "Waiver complete"
+                  : r.status === "missingPhone"
+                    ? "Missing phone number"
+                    : "Not completed"}
               </span>
               <span style={{ color: r.flagged ? "var(--orange)" : "var(--muted)" }}>
                 {r.flagged ? "⚠ Health notes" : ""}

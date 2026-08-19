@@ -29,6 +29,7 @@ export default async function AdminCustomerDetail({ params }: { params: Promise<
 
   const health = (profile.health ?? {}) as HealthAnswers;
   const waiverDone = Boolean(profile.waiver_signed_at && profile.health_completed_at);
+  const phoneMissing = waiverDone && !profile.phone;
   const conditions = (health.conditions ?? []).map(conditionLabel);
 
   return (
@@ -42,15 +43,23 @@ export default async function AdminCustomerDetail({ params }: { params: Promise<
         {!waiverDone ? (
           <p className="admin-empty">Hasn&apos;t completed the health &amp; waiver form yet.</p>
         ) : (
-          <p style={{ color: "var(--muted)" }}>
-            Signed {new Date(profile.waiver_signed_at!).toLocaleString("en-GB", {
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </p>
+          <>
+            <p style={{ color: "var(--muted)" }}>
+              Signed {new Date(profile.waiver_signed_at!).toLocaleString("en-GB", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+            {phoneMissing && (
+              <p style={{ color: "var(--orange)", marginTop: ".5rem" }}>
+                No mobile number on file yet — they filled this in before we started asking for
+                one, and can&apos;t book another class until they add it.
+              </p>
+            )}
+          </>
         )}
       </div>
 
