@@ -70,10 +70,10 @@ export default async function Book({
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("waiver_signed_at, health_completed_at")
+      .select("phone, waiver_signed_at, health_completed_at")
       .eq("id", user.id)
       .maybeSingle();
-    waiverDone = Boolean(profile?.waiver_signed_at && profile?.health_completed_at);
+    waiverDone = Boolean(profile?.waiver_signed_at && profile?.health_completed_at && profile?.phone);
   }
 
   const now = new Date();

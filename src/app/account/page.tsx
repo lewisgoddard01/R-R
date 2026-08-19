@@ -20,7 +20,7 @@ export default async function Account({
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("full_name, waiver_signed_at, health_completed_at")
+    .select("full_name, phone, waiver_signed_at, health_completed_at")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -36,7 +36,7 @@ export default async function Account({
   const nextExpiry = packs?.[0]?.expires_at;
 
   const firstName = (profile?.full_name || user.email || "").split(" ")[0];
-  const waiverDone = Boolean(profile?.waiver_signed_at && profile?.health_completed_at);
+  const waiverDone = Boolean(profile?.waiver_signed_at && profile?.health_completed_at && profile?.phone);
 
   async function deleteAccount() {
     "use server";
