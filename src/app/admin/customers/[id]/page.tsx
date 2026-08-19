@@ -19,7 +19,7 @@ export default async function AdminCustomerDetail({ params }: { params: Promise<
   const [{ data: profile }, { data: userRes }] = await Promise.all([
     admin
       .from("profiles")
-      .select("full_name, waiver_signed_at, health_completed_at, health")
+      .select("full_name, phone, waiver_signed_at, health_completed_at, health")
       .eq("id", id)
       .maybeSingle(),
     admin.auth.admin.getUserById(id),
@@ -35,7 +35,10 @@ export default async function AdminCustomerDetail({ params }: { params: Promise<
     <>
       <div className="admin-card" style={{ marginTop: "2rem" }}>
         <h3>{profile.full_name || "(no name on file)"}</h3>
-        <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>{userRes?.user?.email}</p>
+        <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>
+          {userRes?.user?.email}
+          {profile.phone && ` · ${profile.phone}`}
+        </p>
         {!waiverDone ? (
           <p className="admin-empty">Hasn&apos;t completed the health &amp; waiver form yet.</p>
         ) : (

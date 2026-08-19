@@ -23,7 +23,7 @@ export default async function AdminRoster({ params }: { params: Promise<{ sessio
   const userIds = (bookings ?? []).map((b) => b.user_id);
   const [{ data: profiles }, { data: usersPage }] = await Promise.all([
     userIds.length
-      ? admin.from("profiles").select("id, full_name, health").in("id", userIds)
+      ? admin.from("profiles").select("id, full_name, phone, health").in("id", userIds)
       : Promise.resolve({ data: [] }),
     admin.auth.admin.listUsers({ perPage: 1000 }),
   ]);
@@ -37,6 +37,7 @@ export default async function AdminRoster({ params }: { params: Promise<{ sessio
       ...b,
       name: profile?.full_name || "(no name on file)",
       email: emailById.get(b.user_id) ?? "",
+      phone: profile?.phone ?? "",
       flagged: hasHealthFlags(profile?.health as HealthAnswers | undefined),
     };
   });
@@ -70,7 +71,10 @@ export default async function AdminRoster({ params }: { params: Promise<{ sessio
           {booked.map((r) => (
             <Link className="admin-row admin-row--link" href={`/admin/customers/${r.user_id}`} key={r.id}>
               <span>{r.name}</span>
-              <span style={{ color: "var(--muted)" }}>{r.email}</span>
+              <span style={{ color: "var(--muted)" }}>
+                {r.email}
+                {r.phone && <div style={{ fontSize: ".82rem" }}>{r.phone}</div>}
+              </span>
               <span style={{ color: "var(--muted)" }}>{r.payment_status === "comped" ? "Free (comped)" : r.payment_status}</span>
               <span style={{ color: r.flagged ? "var(--orange)" : "var(--muted)" }}>
                 {r.flagged ? "⚠ Health notes" : ""}
@@ -87,7 +91,10 @@ export default async function AdminRoster({ params }: { params: Promise<{ sessio
             {waitlisted.map((r) => (
               <Link className="admin-row admin-row--link" href={`/admin/customers/${r.user_id}`} key={r.id}>
                 <span>{r.name}</span>
-                <span style={{ color: "var(--muted)" }}>{r.email}</span>
+                <span style={{ color: "var(--muted)" }}>
+                {r.email}
+                {r.phone && <div style={{ fontSize: ".82rem" }}>{r.phone}</div>}
+              </span>
                 <span />
                 <span style={{ color: r.flagged ? "var(--orange)" : "var(--muted)" }}>
                   {r.flagged ? "⚠ Health notes" : ""}

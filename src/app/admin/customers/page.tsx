@@ -8,7 +8,7 @@ export default async function AdminCustomers() {
   const [{ data: profiles }, { data: usersPage }] = await Promise.all([
     admin
       .from("profiles")
-      .select("id, full_name, waiver_signed_at, health_completed_at, health")
+      .select("id, full_name, phone, waiver_signed_at, health_completed_at, health")
       .order("full_name", { ascending: true }),
     admin.auth.admin.listUsers({ perPage: 1000 }),
   ]);
@@ -37,7 +37,10 @@ export default async function AdminCustomers() {
           {rows.map((r) => (
             <Link className="admin-row admin-row--link" href={`/admin/customers/${r.id}`} key={r.id}>
               <span>{r.full_name || "(no name on file)"}</span>
-              <span style={{ color: "var(--muted)" }}>{r.email}</span>
+              <span style={{ color: "var(--muted)" }}>
+                {r.email}
+                {r.phone && <div style={{ fontSize: ".82rem" }}>{r.phone}</div>}
+              </span>
               <span className={r.waiverDone ? "admin-badge admin-badge--on" : "admin-badge"}>
                 {r.waiverDone ? "Waiver complete" : "Not completed"}
               </span>

@@ -62,7 +62,7 @@ export function WaiverForm({ userId, waiverText }: { userId: string; waiverText:
 
     const { error } = await supabase
       .from("profiles")
-      .update({ health, health_completed_at: now, waiver_signed_at: now })
+      .update({ health, health_completed_at: now, waiver_signed_at: now, phone: get("phone") })
       .eq("id", userId);
 
     if (error) {
@@ -83,6 +83,11 @@ export function WaiverForm({ userId, waiverText }: { userId: string; waiverText:
           anything, that&apos;s absolutely fine — just give us a little detail and we&apos;ll make
           sure your first class is set up right for you.
         </p>
+
+        <div className="field">
+          <label htmlFor="phone">Your mobile number</label>
+          <input id="phone" name="phone" type="tel" autoComplete="tel" required />
+        </div>
 
         <div className="field">
           <label htmlFor="priorPilates">Have you done Pilates before (mat or reformer)?</label>
