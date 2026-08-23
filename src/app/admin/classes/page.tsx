@@ -1,8 +1,14 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createClassAction } from "@/app/admin/actions";
 
-export default async function AdminClasses() {
+export default async function AdminClasses({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; saved?: string }>;
+}) {
+  const { error: errorMsg, saved } = await searchParams;
   const supabase = await createClient();
   const { data: classes } = await supabase
     .from("classes")
@@ -11,13 +17,19 @@ export default async function AdminClasses() {
 
   async function addClass(formData: FormData) {
     "use server";
-    await createClassAction(formData);
+    const { error } = await createClassAction(formData);
+    if (error) redirect(`/admin/classes?error=${encodeURIComponent(error)}`);
+    redirect("/admin/classes?saved=Class%20added.");
   }
 
   return (
     <>
       <div className="admin-card" style={{ marginTop: "2rem" }}>
         <h3>Add a class</h3>
+        {errorMsg && (
+          <p style={{ color: "var(--orange)", marginBottom: "1rem" }}>Couldn&apos;t save: {errorMsg}</p>
+        )}
+        {saved && !errorMsg && <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>✓ {saved}</p>}
         <form action={addClass} className="admin-form">
           <div className="admin-form__grid">
             <label>

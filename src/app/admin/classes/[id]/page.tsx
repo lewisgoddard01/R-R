@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   updateClassAction,
@@ -18,8 +18,15 @@ function timeInputValue(d: Date) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default async function AdminClassDetail({ params }: { params: Promise<{ id: string }> }) {
+export default async function AdminClassDetail({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string; saved?: string }>;
+}) {
   const { id } = await params;
+  const { error: errorMsg, saved } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: cls }, { data: sessions }] = await Promise.all([
@@ -36,29 +43,42 @@ export default async function AdminClassDetail({ params }: { params: Promise<{ i
 
   async function updateAction(formData: FormData) {
     "use server";
-    await updateClassAction(id, formData);
+    const { error } = await updateClassAction(id, formData);
+    if (error) redirect(`/admin/classes/${id}?error=${encodeURIComponent(error)}`);
+    redirect(`/admin/classes/${id}?saved=Changes%20saved.`);
   }
   async function deleteAction() {
     "use server";
-    await deleteClassAction(id);
+    const { error } = await deleteClassAction(id);
+    if (error) redirect(`/admin/classes/${id}?error=${encodeURIComponent(error)}`);
   }
   async function addSessionAction(formData: FormData) {
     "use server";
-    await createSessionAction(id, formData);
+    const { error } = await createSessionAction(id, formData);
+    if (error) redirect(`/admin/classes/${id}?error=${encodeURIComponent(error)}`);
+    redirect(`/admin/classes/${id}?saved=Added%20to%20the%20timetable.`);
   }
   async function cancelSession(sessionId: string) {
     "use server";
-    await cancelSessionAction(sessionId, id);
+    const { error } = await cancelSessionAction(sessionId, id);
+    if (error) redirect(`/admin/classes/${id}?error=${encodeURIComponent(error)}`);
+    redirect(`/admin/classes/${id}?saved=Class%20cancelled.`);
   }
   async function editSession(sessionId: string, formData: FormData) {
     "use server";
-    await updateSessionAction(sessionId, id, formData);
+    const { error } = await updateSessionAction(sessionId, id, formData);
+    if (error) redirect(`/admin/classes/${id}?error=${encodeURIComponent(error)}`);
+    redirect(`/admin/classes/${id}?saved=Changes%20saved.`);
   }
 
   return (
     <>
       <div className="admin-card" style={{ marginTop: "2rem" }}>
         <h3>Edit class</h3>
+        {errorMsg && (
+          <p style={{ color: "var(--orange)", marginBottom: "1rem" }}>Couldn&apos;t save: {errorMsg}</p>
+        )}
+        {saved && !errorMsg && <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>✓ {saved}</p>}
         <form action={updateAction} className="admin-form">
           <div className="admin-form__grid">
             <label>

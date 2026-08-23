@@ -330,3 +330,11 @@ h1,h2,h3{font-family:var(--serif);font-weight:500;line-height:1.04;letter-spacin
   .admin-stats{grid-template-columns:1fr}
   .admin-row{grid-template-columns:1fr 1fr}
 }
+
+/* ===== skeleton loading placeholders ===== */
+@keyframes skelPulse{0%,100%{opacity:.55}50%{opacity:1}}
+.skel{background:var(--line);border-radius:.4rem;animation:skelPulse 1.4s var(--ease) infinite}
+.skel-line{height:.9em;margin-bottom:.6em;width:100%}
+.skel-title{height:2.4rem;width:min(60%,320px);margin-bottom:1.2rem}
+.skel-block{border-radius:.9rem;padding:1.2rem;border:1px solid var(--line)}
+.skel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.2rem}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   addTimetableSessionAction,
@@ -33,9 +34,9 @@ type SessionRow = {
 export default async function AdminTimetable({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; removed?: string }>;
+  searchParams: Promise<{ error?: string; removed?: string; saved?: string }>;
 }) {
-  const { error: errorMsg, removed } = await searchParams;
+  const { error: errorMsg, removed, saved } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: classes }, { data: sessions }] = await Promise.all([
@@ -70,31 +71,30 @@ export default async function AdminTimetable({
   async function addSession(formData: FormData) {
     "use server";
     const { error } = await addTimetableSessionAction(formData);
-    if (error) {
-      const { redirect } = await import("next/navigation");
-      redirect(`/admin/timetable?error=${encodeURIComponent(error)}`);
-    }
+    if (error) redirect(`/admin/timetable?error=${encodeURIComponent(error)}`);
+    redirect("/admin/timetable?saved=Added%20to%20the%20timetable.");
   }
 
   async function editSession(sessionId: string, classId: string, formData: FormData) {
     "use server";
-    await updateSessionAction(sessionId, classId, formData);
+    const { error } = await updateSessionAction(sessionId, classId, formData);
+    if (error) redirect(`/admin/timetable?error=${encodeURIComponent(error)}`);
+    redirect("/admin/timetable?saved=Changes%20saved.");
   }
   async function cancelSession(sessionId: string, classId: string) {
     "use server";
-    await cancelSessionAction(sessionId, classId);
+    const { error } = await cancelSessionAction(sessionId, classId);
+    if (error) redirect(`/admin/timetable?error=${encodeURIComponent(error)}`);
+    redirect("/admin/timetable?saved=Class%20cancelled.");
   }
   async function addFree(sessionId: string, classId: string, formData: FormData) {
     "use server";
     const { error } = await addFreeBookingAction(sessionId, classId, formData);
-    if (error) {
-      const { redirect } = await import("next/navigation");
-      redirect(`/admin/timetable?error=${encodeURIComponent(error)}`);
-    }
+    if (error) redirect(`/admin/timetable?error=${encodeURIComponent(error)}`);
+    redirect("/admin/timetable?saved=Added%20them%20for%20free.");
   }
   async function removeWeekday(formData: FormData) {
     "use server";
-    const { redirect } = await import("next/navigation");
     const result = await bulkCancelWeekdayAction(formData);
     if (result.error) redirect(`/admin/timetable?error=${encodeURIComponent(result.error)}`);
     redirect(`/admin/timetable?removed=${result.cancelledCount ?? 0}`);
@@ -108,7 +108,10 @@ export default async function AdminTimetable({
           Pick a class, then the date, time and who&apos;s teaching it. Tick a repeat if it runs
           every week — it&apos;ll add all the future dates in one go.
         </p>
-        {errorMsg && <p style={{ color: "var(--orange)", marginBottom: "1rem" }}>{errorMsg}</p>}
+        {errorMsg && (
+          <p style={{ color: "var(--orange)", marginBottom: "1rem" }}>Couldn&apos;t save: {errorMsg}</p>
+        )}
+        {saved && !errorMsg && <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>✓ {saved}</p>}
         {(!classes || classes.length === 0) && (
           <p className="admin-empty">
             No classes to schedule yet — add a class type first under Classes &amp; sessions.
