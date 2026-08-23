@@ -11,22 +11,59 @@ import { sendBookingConfirmationEmail, sendCancellationEmails } from "@/lib/book
 import { findBundle, WELCOME_PACK } from "@/lib/packs";
 import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
 
+// This is the "Join the waitlist" button — only ever shown when a class
+// appears full. But book_session() decides booked-vs-waitlisted from the
+// real capacity at the moment it runs, not what the button assumed — so if
+// a spot opened between page load and the click (e.g. someone, including
+// this same customer, just cancelled), it can return "booked" for real. If
+// we let that sit as a free confirmed spot, that's a genuine way to end up
+// booked without ever paying. So a "booked" result here is routed through
+// exactly the same payment step as the paid booking button, instead of
+// being treated as done.
 export async function bookSessionAction(sessionId: string) {
-  if (!bookingsAreOpen()) return { error: `Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!` };
+  if (!bookingsAreOpen()) {
+    redirect(`/book?error=${encodeURIComponent(`Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!`)}`);
+  }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { error: "Please log in to book a class." };
+  if (!user) redirect("/login?next=/book");
 
   const { data, error } = await supabase.rpc("book_session", { p_session_id: sessionId });
-  if (error) return { error: error.message };
-
   revalidatePath("/book");
   revalidatePath("/account/bookings");
+  if (error) redirect(`/book?error=${encodeURIComponent(error.message)}`);
+
   const row = data?.[0];
-  return { status: row?.result_status as "booked" | "waitlisted" };
+  if (row?.result_status === "waitlisted") redirect("/book?joined=waitlist");
+
+  const { data: session } = await supabase
+    .from("class_sessions")
+    .select("id, starts_at, classes(name, price_pence)")
+    .eq("id", sessionId)
+    .maybeSingle();
+  const cls = session?.classes as unknown as { name: string; price_pence: number } | null;
+  if (!cls || !session) redirect("/book?error=Class%20not%20found");
+
+  const { data: myBooking } = await supabase
+    .from("bookings")
+    .select("id")
+    .eq("session_id", sessionId)
+    .eq("user_id", user.id)
+    .eq("status", "booked")
+    .maybeSingle();
+  if (!myBooking) redirect("/book?error=Booking%20not%20found");
+
+  await settlePaymentAndRedirect({
+    supabase,
+    userEmail: user.email,
+    bookingId: myBooking.id,
+    sessionId,
+    session,
+    cls,
+  });
 }
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
