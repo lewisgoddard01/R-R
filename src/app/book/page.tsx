@@ -204,6 +204,17 @@ export default async function Book({
                   const time = new Date(s.starts_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
                   const canAct = user && waiverDone && !mine;
 
+                  // 9am classes must be booked by 8pm the evening before —
+                  // mirrors the server-side check in book_session().
+                  const startDate = new Date(s.starts_at);
+                  let pastCutoff = false;
+                  if (startDate.getUTCHours() === 9 && startDate.getUTCMinutes() === 0) {
+                    const cutoff = new Date(startDate);
+                    cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+                    cutoff.setUTCHours(20, 0, 0, 0);
+                    pastCutoff = now > cutoff;
+                  }
+
                   return (
                     <div className="crow" key={s.id}>
                       <span className="crow__name">
@@ -221,14 +232,20 @@ export default async function Book({
                         <p className="crow__desc">{briefDescription(s.classes?.description)}</p>
                       )}
 
-                      {canAct && spacesLeft > 0 && (
+                      {canAct && pastCutoff && (
+                        <p style={{ gridColumn: "1/-1", color: "var(--muted)", fontSize: ".85rem", marginTop: ".4rem" }}>
+                          Booking&apos;s closed for this one — 9am classes need to be booked by 8pm the evening
+                          before.
+                        </p>
+                      )}
+                      {canAct && !pastCutoff && spacesLeft > 0 && (
                         <form action={payAndBook.bind(null, s.id)} style={{ gridColumn: "1/-1" }}>
                           <button type="submit" className="btn btn--primary" style={{ marginTop: ".6rem" }}>
                             Book — £{((s.classes?.price_pence ?? 0) / 100).toFixed(2)}
                           </button>
                         </form>
                       )}
-                      {canAct && spacesLeft <= 0 && (
+                      {canAct && !pastCutoff && spacesLeft <= 0 && (
                         <form action={book.bind(null, s.id)} style={{ gridColumn: "1/-1" }}>
                           <button type="submit" className="btn btn--ghost" style={{ marginTop: ".6rem" }}>
                             Join the waitlist

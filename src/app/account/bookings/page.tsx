@@ -27,7 +27,6 @@ export default async function MyBookings({
     .from("bookings")
     .select("id, status, payment_status, session_id, class_sessions(starts_at, instructor, classes(name))")
     .eq("user_id", user.id)
-    .in("status", ["booked", "waitlisted"])
     .order("created_at", { ascending: false });
 
   type Row = {
@@ -40,8 +39,13 @@ export default async function MyBookings({
   const now = +new Date();
   const rows = ((bookings ?? []) as unknown as Row[]).filter((b) => b.class_sessions);
   const upcoming = rows
-    .filter((b) => +new Date(b.class_sessions!.starts_at) > now)
+    .filter((b) => +new Date(b.class_sessions!.starts_at) > now && ["booked", "waitlisted"].includes(b.status))
     .sort((a, b) => +new Date(a.class_sessions!.starts_at) - +new Date(b.class_sessions!.starts_at));
+  // History — anything for a class that's already happened, so a customer
+  // can see what they've actually been to (or missed/cancelled).
+  const past = rows
+    .filter((b) => +new Date(b.class_sessions!.starts_at) <= now)
+    .sort((a, b) => +new Date(b.class_sessions!.starts_at) - +new Date(a.class_sessions!.starts_at));
 
   return (
     <section className="sec page-head">
@@ -107,6 +111,43 @@ export default async function MyBookings({
             })
           )}
         </div>
+
+        {past.length > 0 && (
+          <>
+            <h2 style={{ fontFamily: "var(--serif)", fontSize: "1.5rem", marginTop: "2.5rem", marginBottom: "1rem" }}>
+              Past classes
+            </h2>
+            <div className="clist">
+              {past.map((b) => {
+                const s = b.class_sessions!;
+                const when = new Date(s.starts_at).toLocaleString("en-GB", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                const label =
+                  b.status === "cancelled"
+                    ? "Cancelled"
+                    : b.status === "attended"
+                      ? "Attended"
+                      : b.status === "waitlisted"
+                        ? "Waitlisted (unclaimed)"
+                        : "Booked";
+                return (
+                  <div className="crow" key={b.id}>
+                    <span className="crow__name">{s.classes?.name}</span>
+                    <span className="crow__tag">{when}</span>
+                    <span className="crow__meta" style={{ color: "var(--muted)" }}>
+                      {label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         <p style={{ marginTop: "2rem" }}>
           <Link href="/book" className="btn btn--primary">
