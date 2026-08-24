@@ -45,8 +45,7 @@ export default async function AdminRoster({ params }: { params: Promise<{ sessio
   const booked = rows.filter((r) => r.status === "booked");
   const waitlisted = rows.filter((r) => r.status === "waitlisted");
   const className = (session.classes as unknown as { name: string } | null)?.name ?? "Class";
-  const when = new Date(session.starts_at).toLocaleString("en-GB", {
-    weekday: "long",
+  const when = new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",     weekday: "long",
     day: "numeric",
     month: "long",
     hour: "2-digit",

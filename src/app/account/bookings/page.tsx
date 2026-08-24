@@ -76,8 +76,7 @@ export default async function MyBookings({
           ) : (
             upcoming.map((b) => {
               const s = b.class_sessions!;
-              const when = new Date(s.starts_at).toLocaleString("en-GB", {
-                weekday: "long",
+              const when = new Date(s.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",                 weekday: "long",
                 day: "numeric",
                 month: "long",
                 hour: "2-digit",
@@ -120,8 +119,7 @@ export default async function MyBookings({
             <div className="clist">
               {past.map((b) => {
                 const s = b.class_sessions!;
-                const when = new Date(s.starts_at).toLocaleString("en-GB", {
-                  weekday: "long",
+                const when = new Date(s.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",                   weekday: "long",
                   day: "numeric",
                   month: "long",
                   hour: "2-digit",

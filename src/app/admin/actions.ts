@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
 import { sendSessionCancelledEmail, sendBookingConfirmationEmail } from "@/lib/booking-email";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
+import { ukWallTimeToUTC } from "@/lib/uk-time";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -83,7 +84,7 @@ async function insertSessions(classId: string, formData: FormData) {
 
   if (!classId) return { error: "Pick a class." };
   if (!date || !time) return { error: "Pick a date and time." };
-  const startsAt = new Date(`${date}T${time}:00`);
+  const startsAt = ukWallTimeToUTC(date, time);
   if (Number.isNaN(startsAt.getTime())) return { error: "That date/time isn't valid." };
 
   const rows = Array.from({ length: repeatWeeks }, (_, i) => {
@@ -339,7 +340,7 @@ export async function updateSessionAction(sessionId: string, classId: string, fo
   const newClassId = str(formData.get("class_id")) || classId;
 
   if (!date || !time) return { error: "Pick a date and time." };
-  const startsAt = new Date(`${date}T${time}:00`);
+  const startsAt = ukWallTimeToUTC(date, time);
   if (Number.isNaN(startsAt.getTime())) return { error: "That date/time isn't valid." };
 
   const { error } = await supabase

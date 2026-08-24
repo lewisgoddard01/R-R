@@ -72,8 +72,7 @@ export default async function ClaimWaitlistSpot({
           <>
             <p className="lede intro">
               A spot opened up in <strong>{session.classes?.name}</strong> on{" "}
-              {new Date(session.starts_at).toLocaleString("en-GB", {
-                weekday: "long",
+              {new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",                 weekday: "long",
                 day: "numeric",
                 month: "long",
                 hour: "2-digit",

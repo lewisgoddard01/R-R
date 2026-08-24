@@ -45,8 +45,7 @@ export default async function AdminCustomerDetail({ params }: { params: Promise<
         ) : (
           <>
             <p style={{ color: "var(--muted)" }}>
-              Signed {new Date(profile.waiver_signed_at!).toLocaleString("en-GB", {
-                day: "numeric",
+              Signed {new Date(profile.waiver_signed_at!).toLocaleString("en-GB", { timeZone: "Europe/London",                 day: "numeric",
                 month: "long",
                 year: "numeric",
                 hour: "2-digit",

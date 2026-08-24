@@ -101,8 +101,7 @@ export async function POST(req: NextRequest) {
         const { data: userRes } = await admin.auth.admin.getUserById(booking.user_id);
         const email = userRes?.user?.email;
         const className = cs.classes?.name ?? "your class";
-        const when = new Date(cs.starts_at).toLocaleString("en-GB", {
-          weekday: "long",
+        const when = new Date(cs.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",           weekday: "long",
           day: "numeric",
           month: "long",
           hour: "2-digit",

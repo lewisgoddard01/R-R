@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Rule } from "@/components/rule";
 import { bookSessionAction, createCheckoutAction } from "./actions";
 import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL, bookingHorizon } from "@/lib/booking-window";
+import { ukParts, ukWallTimeToUTC } from "@/lib/uk-time";
 
 export const metadata: Metadata = {
   title: "Book a class — Revive & Reform",
@@ -120,8 +121,7 @@ export default async function Book({
 
   const byDay = new Map<string, SessionRow[]>();
   rows.forEach((r) => {
-    const key = new Date(r.starts_at).toLocaleDateString("en-GB", {
-      weekday: "long",
+    const key = new Date(r.starts_at).toLocaleDateString("en-GB", { timeZone: "Europe/London",       weekday: "long",
       day: "numeric",
       month: "long",
     });
@@ -201,17 +201,18 @@ export default async function Book({
                 {daySessions.map((s) => {
                   const spacesLeft = spacesById.get(s.id) ?? s.capacity;
                   const mine = myStatusById.get(s.id);
-                  const time = new Date(s.starts_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+                  const time = new Date(s.starts_at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
                   const canAct = user && waiverDone && !mine;
 
-                  // 9am classes must be booked by 8pm the evening before —
-                  // mirrors the server-side check in book_session().
+                  // 9am classes must be booked by 8pm UK time the evening
+                  // before — mirrors the server-side check in book_session().
                   const startDate = new Date(s.starts_at);
+                  const startUK = ukParts(startDate);
                   let pastCutoff = false;
-                  if (startDate.getUTCHours() === 9 && startDate.getUTCMinutes() === 0) {
-                    const cutoff = new Date(startDate);
-                    cutoff.setUTCDate(cutoff.getUTCDate() - 1);
-                    cutoff.setUTCHours(20, 0, 0, 0);
+                  if (startUK.hour === 9 && startUK.minute === 0) {
+                    const dayBefore = new Date(Date.UTC(startUK.year, startUK.month - 1, startUK.day - 1));
+                    const cutoffDate = `${dayBefore.getUTCFullYear()}-${String(dayBefore.getUTCMonth() + 1).padStart(2, "0")}-${String(dayBefore.getUTCDate()).padStart(2, "0")}`;
+                    const cutoff = ukWallTimeToUTC(cutoffDate, "20:00");
                     pastCutoff = now > cutoff;
                   }
 

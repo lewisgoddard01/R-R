@@ -26,8 +26,7 @@ export async function notifyWaitlistOfOpening(sessionId: string) {
     .maybeSingle();
   const className = (session?.classes as unknown as { name: string } | null)?.name ?? "your class";
   const when = session?.starts_at
-    ? new Date(session.starts_at).toLocaleString("en-GB", {
-        weekday: "long",
+    ? new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",         weekday: "long",
         day: "numeric",
         month: "long",
         hour: "2-digit",

@@ -57,14 +57,13 @@ export default async function AdminOverview() {
         id: w.id,
         who: nameById.get(w.user_id) || emailById.get(w.user_id) || "Unknown customer",
         className: w.class_sessions!.classes?.name ?? "",
-        when: new Date(w.class_sessions!.starts_at).toLocaleString("en-GB", {
-          weekday: "short",
+        when: new Date(w.class_sessions!.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",           weekday: "short",
           day: "numeric",
           month: "short",
           hour: "2-digit",
           minute: "2-digit",
         }),
-        waitingSince: new Date(w.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+        waitingSince: new Date(w.created_at).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" }),
       }));
   }
 
@@ -101,14 +100,13 @@ export default async function AdminOverview() {
       id: c.id,
       who: nameById.get(c.user_id) || emailById.get(c.user_id) || "Unknown customer",
       className: c.class_sessions!.classes?.name ?? "",
-      when: new Date(c.class_sessions!.starts_at).toLocaleString("en-GB", {
-        weekday: "short",
+      when: new Date(c.class_sessions!.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",         weekday: "short",
         day: "numeric",
         month: "short",
         hour: "2-digit",
         minute: "2-digit",
       }),
-      cancelledOn: new Date(c.cancelled_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+      cancelledOn: new Date(c.cancelled_at).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" }),
       outcome: (() => {
         if (c.refunded_at) return "refunded";
         if (c.payment_status !== "paid") return "no payment taken";
@@ -182,7 +180,7 @@ export default async function AdminOverview() {
           <div className="admin-table">
             {soon.map((s) => (
               <div className="admin-row" key={s.id}>
-                <span>{new Date(s.starts_at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                <span>{new Date(s.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
                 <span>{(s.classes as unknown as { name: string } | null)?.name}</span>
                 <span>{s.instructor || "—"}</span>
                 <span>cap {s.capacity}</span>

@@ -97,8 +97,7 @@ async function settlePaymentAndRedirect(params: {
     revalidatePath("/book");
     revalidatePath("/account/bookings");
 
-    const when = new Date(session.starts_at).toLocaleString("en-GB", {
-      weekday: "long",
+    const when = new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",       weekday: "long",
       day: "numeric",
       month: "long",
       hour: "2-digit",
@@ -369,8 +368,7 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
   const cancellationEmail =
     user.email && cls && session
       ? (() => {
-          const when = new Date(session.starts_at).toLocaleString("en-GB", {
-            weekday: "long",
+          const when = new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",             weekday: "long",
             day: "numeric",
             month: "long",
             hour: "2-digit",

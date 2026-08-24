@@ -8,14 +8,17 @@ import {
   updateSessionAction,
 } from "@/app/admin/actions";
 import { ConfirmButton } from "@/components/confirm-button";
+import { ukParts } from "@/lib/uk-time";
 
 function dateInputValue(d: Date) {
+  const p = ukParts(d);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
 }
 function timeInputValue(d: Date) {
+  const p = ukParts(d);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(p.hour)}:${pad(p.minute)}`;
 }
 
 export default async function AdminClassDetail({

@@ -84,7 +84,7 @@ export default async function Account({
                 <span style={{ color: "var(--orange)" }}>
                   {totalCredits} class{totalCredits === 1 ? "" : "es"} left
                   {nextExpiry &&
-                    ` · expires ${new Date(nextExpiry).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}`}
+                    ` · expires ${new Date(nextExpiry).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "long" })}`}
                 </span>
               </div>
             )}

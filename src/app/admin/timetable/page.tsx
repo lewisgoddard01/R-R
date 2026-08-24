@@ -9,16 +9,19 @@ import {
   addFreeBookingAction,
 } from "@/app/admin/actions";
 import { ConfirmButton } from "@/components/confirm-button";
+import { ukParts } from "@/lib/uk-time";
 
 const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function dateInputValue(d: Date) {
+  const p = ukParts(d);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
 }
 function timeInputValue(d: Date) {
+  const p = ukParts(d);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(p.hour)}:${pad(p.minute)}`;
 }
 
 type SessionRow = {
@@ -58,8 +61,7 @@ export default async function AdminTimetable({
 
   const byDate = new Map<string, SessionRow[]>();
   for (const r of rows) {
-    const key = new Date(r.starts_at).toLocaleDateString("en-GB", {
-      weekday: "long",
+    const key = new Date(r.starts_at).toLocaleDateString("en-GB", { timeZone: "Europe/London",       weekday: "long",
       day: "numeric",
       month: "long",
       year: "numeric",

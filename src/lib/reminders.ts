@@ -43,7 +43,7 @@ export async function sendClassReminders() {
       const session = sessionById.get(booking.session_id);
       if (!session) return;
       const className = (session.classes as unknown as { name: string } | null)?.name ?? "your class";
-      const when = new Date(session.starts_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      const when = new Date(session.starts_at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
 
       const { data: userRes } = await admin.auth.admin.getUserById(booking.user_id);
       const email = userRes?.user?.email;

@@ -43,8 +43,8 @@ export default async function Timetable() {
   const byDay = new Map<string, SessionRow[]>();
   const seenSlots = new Map<string, Set<string>>();
   for (const r of upcomingRows) {
-    const day = new Date(r.starts_at).toLocaleDateString("en-GB", { weekday: "long" });
-    const time = new Date(r.starts_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const day = new Date(r.starts_at).toLocaleDateString("en-GB", { timeZone: "Europe/London", weekday: "long" });
+    const time = new Date(r.starts_at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
     const slotKey = `${time}|${r.class_id}`;
 
     if (!seenSlots.has(day)) seenSlots.set(day, new Set());
@@ -87,8 +87,7 @@ export default async function Timetable() {
                 <h3>{day}</h3>
                 {slots.length === 0 && <p className="admin-empty">No classes</p>}
                 {slots.map((s, i) => {
-                  const time = new Date(s.starts_at).toLocaleTimeString("en-GB", {
-                    hour: "2-digit",
+                  const time = new Date(s.starts_at).toLocaleTimeString("en-GB", { timeZone: "Europe/London",                     hour: "2-digit",
                     minute: "2-digit",
                   });
                   const name = s.classes?.name ?? "";
