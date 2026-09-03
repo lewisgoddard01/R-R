@@ -23,10 +23,7 @@ export function RevealController() {
         }),
       { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
     );
-    els.forEach((el, i) => {
-      el.style.transitionDelay = `${Math.min(i % 5, 4) * 0.06}s`;
-      io.observe(el);
-    });
+    els.forEach((el) => io.observe(el));
     return () => io.disconnect();
   }, [pathname]);
   return null;

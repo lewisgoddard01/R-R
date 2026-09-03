@@ -146,9 +146,15 @@ h1,h2,h3{font-family:var(--serif);font-weight:500;line-height:1.04;letter-spacin
 .footer__nav a:hover{color:var(--orange);opacity:1}
 .footer__fine{max-width:var(--maxw);margin:2rem auto 0;padding-top:1.5rem;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
 
-/* reveal — transform only, never gates visibility */
+/* reveal — transform only, never gates visibility. Stagger is pure CSS
+   (nth-of-type among siblings) rather than a JS-set inline style, so
+   there's nothing for React to disagree with the server about. */
 [data-reveal]{transform:translateY(16px);transition:transform .8s var(--ease)}
 [data-reveal].in{transform:none}
+[data-reveal]:nth-of-type(5n+2){transition-delay:.06s}
+[data-reveal]:nth-of-type(5n+3){transition-delay:.12s}
+[data-reveal]:nth-of-type(5n+4){transition-delay:.18s}
+[data-reveal]:nth-of-type(5n+5){transition-delay:.24s}
 
 /* ===== inner pages ===== */
 .intro{max-width:60ch;margin-top:1.2rem}
