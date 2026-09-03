@@ -127,8 +127,7 @@ async function cancelSessionCore(admin: ReturnType<typeof createAdminClient>, se
     .maybeSingle();
   const className = (session?.classes as unknown as { name: string } | null)?.name ?? "the class";
   const when = session?.starts_at
-    ? new Date(session.starts_at).toLocaleString("en-GB", {
-        weekday: "long",
+    ? new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",         weekday: "long",
         day: "numeric",
         month: "long",
         hour: "2-digit",
@@ -300,8 +299,7 @@ export async function addFreeBookingAction(sessionId: string, classId: string, f
     .maybeSingle();
   const className = (session?.classes as unknown as { name: string } | null)?.name ?? "the class";
   const when = session?.starts_at
-    ? new Date(session.starts_at).toLocaleString("en-GB", {
-        weekday: "long",
+    ? new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",         weekday: "long",
         day: "numeric",
         month: "long",
         hour: "2-digit",

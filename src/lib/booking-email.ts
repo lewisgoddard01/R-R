@@ -6,7 +6,7 @@ export async function sendBookingConfirmationEmail(params: { email: string; clas
     sendEmail({
       to: email,
       subject: `Booking confirmed — ${className}`,
-      html: `<p>You're booked in for <strong>${className}</strong> on ${when}. See you on the reformer!</p><p>— Revive &amp; Reform</p>`,
+      html: `<p>You're booked in for <strong>${className}</strong> on ${when}. See you on the reformer!</p><p>Please remember to bring grip socks to your class — these can be purchased at R&amp;R for £3 if needed (cash only).</p><p>— Revive &amp; Reform</p>`,
     }).catch(() => {}),
     sendEmail({
       to: ADMIN_EMAIL,

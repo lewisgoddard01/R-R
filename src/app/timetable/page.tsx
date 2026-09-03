@@ -4,6 +4,7 @@ import { Rule } from "@/components/rule";
 import { TodayMarker } from "@/components/today-marker";
 import { classShort } from "@/lib/class-info";
 import { createClient } from "@/lib/supabase/server";
+import { ukParts } from "@/lib/uk-time";
 
 export const metadata: Metadata = {
   title: "Timetable — Revive & Reform",
@@ -58,8 +59,11 @@ export default async function Timetable() {
   // Slots can be deduped from different dates, so re-sort each day by
   // time-of-day rather than relying on the order they were first seen in.
   for (const slots of byDay.values()) {
-    slots.sort((a, b) => new Date(a.starts_at).getHours() * 60 + new Date(a.starts_at).getMinutes()
-      - (new Date(b.starts_at).getHours() * 60 + new Date(b.starts_at).getMinutes()));
+    slots.sort((a, b) => {
+      const pa = ukParts(new Date(a.starts_at));
+      const pb = ukParts(new Date(b.starts_at));
+      return pa.hour * 60 + pa.minute - (pb.hour * 60 + pb.minute);
+    });
   }
 
   // Admin-authored overviews win; anything not set in the admin falls back to
