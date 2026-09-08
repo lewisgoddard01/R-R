@@ -147,8 +147,9 @@ export default async function Pricing({
         </p>
 
         <p className="lede" style={{ marginTop: "2rem", fontSize: "0.95rem" }} data-reveal>
-          Cancellation policy: all cancellations within a 24-hour period are non-refundable.
-          Cancellations before this time will be fully refunded.
+          Cancellation policy: all cancellations within a 24-hour period don&apos;t receive credit.
+          Cancellations before this time are credited back to your Revive &amp; Reform account as a
+          class credit — not a cash refund to your card.
         </p>
       </div>
     </section>

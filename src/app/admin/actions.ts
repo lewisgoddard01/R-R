@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { stripe } from "@/lib/stripe";
 import { sendSessionCancelledEmail, sendBookingConfirmationEmail } from "@/lib/booking-email";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { ukWallTimeToUTC } from "@/lib/uk-time";
+import { PACK_VALIDITY_DAYS } from "@/lib/packs";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -122,10 +122,11 @@ async function cancelSessionCore(admin: ReturnType<typeof createAdminClient>, se
 
   const { data: session } = await admin
     .from("class_sessions")
-    .select("starts_at, classes(name)")
+    .select("starts_at, classes(name, price_pence)")
     .eq("id", sessionId)
     .maybeSingle();
-  const className = (session?.classes as unknown as { name: string } | null)?.name ?? "the class";
+  const classInfo = session?.classes as unknown as { name: string; price_pence: number } | null;
+  const className = classInfo?.name ?? "the class";
   const when = session?.starts_at
     ? new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",         weekday: "long",
         day: "numeric",
@@ -158,7 +159,20 @@ async function cancelSessionCore(admin: ReturnType<typeof createAdminClient>, se
             await admin.rpc("admin_refund_pack_credit", { p_pack_id: booking.paid_via_pack_id });
             await admin.from("bookings").update({ refunded_at: now }).eq("id", booking.id);
           } else if (booking.stripe_payment_intent_id) {
-            await stripe.refunds.create({ payment_intent: booking.stripe_payment_intent_id });
+            // Studio-side cancellations grant a class credit rather than a
+            // Stripe cash refund — matches the policy used for
+            // customer-initiated cancellations.
+            const expiresAt = new Date(Date.now() + PACK_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+            const { error: creditErr } = await admin.from("class_packs").insert({
+              user_id: booking.user_id,
+              kind: "refund_credit",
+              classes_total: 1,
+              classes_remaining: 1,
+              price_paid_pence: classInfo?.price_pence ?? 0,
+              stripe_payment_intent_id: booking.stripe_payment_intent_id,
+              expires_at: expiresAt,
+            });
+            if (creditErr) throw creditErr;
             await admin.from("bookings").update({ payment_status: "refunded", refunded_at: now }).eq("id", booking.id);
           }
           refunded = true;
@@ -175,11 +189,9 @@ async function cancelSessionCore(admin: ReturnType<typeof createAdminClient>, se
       const refundNote = !wasBooked
         ? "You were on the waitlist for this class, so no payment was taken."
         : refunded
-          ? booking.paid_via_pack_id
-            ? "Your class credit has been returned to your account."
-            : "You've been refunded in full."
+          ? "A class credit has been added to your Revive & Reform account — refunds are issued as credit, not a cash refund."
           : refundFailed
-            ? "We couldn't process your refund automatically — Alix will sort this out manually."
+            ? "We couldn't process your credit automatically — Alix will sort this out manually."
             : "No payment was taken for this booking.";
 
       await sendSessionCancelledEmail({ email, className, when, refundNote });
@@ -294,10 +306,11 @@ export async function addFreeBookingAction(sessionId: string, classId: string, f
 
   const { data: session } = await admin
     .from("class_sessions")
-    .select("starts_at, classes(name)")
+    .select("starts_at, classes(name, price_pence)")
     .eq("id", sessionId)
     .maybeSingle();
-  const className = (session?.classes as unknown as { name: string } | null)?.name ?? "the class";
+  const classInfo = session?.classes as unknown as { name: string; price_pence: number } | null;
+  const className = classInfo?.name ?? "the class";
   const when = session?.starts_at
     ? new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",         weekday: "long",
         day: "numeric",

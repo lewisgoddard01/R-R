@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
 import { notifyWaitlistOfOpening } from "@/lib/waitlist";
 import { sendBookingConfirmationEmail, sendCancellationEmails } from "@/lib/booking-email";
-import { findBundle, WELCOME_PACK } from "@/lib/packs";
+import { findBundle, WELCOME_PACK, PACK_VALIDITY_DAYS } from "@/lib/packs";
 import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
 
 // This is the "Join the waitlist" button — only ever shown when a class
@@ -314,7 +314,7 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
       .eq("id", bookingId)
       .eq("user_id", user.id)
       .maybeSingle(),
-    supabase.from("class_sessions").select("starts_at, classes(name)").eq("id", sessionId).maybeSingle(),
+    supabase.from("class_sessions").select("starts_at, classes(name, price_pence)").eq("id", sessionId).maybeSingle(),
   ]);
 
   const { error } = await supabase
@@ -344,11 +344,20 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
       }
     } else if (existing!.stripe_payment_intent_id) {
       try {
-        // Works the same way regardless of how the customer paid (card, Klarna, Clearpay,
-        // Apple/Google Pay, bank debit, etc.) — Stripe's refund API is payment-method-agnostic.
-        // Some methods (e.g. bank debits) can reject a refund if the original payment hasn't
-        // fully settled yet, which is exactly the case this catch exists for.
-        await stripe.refunds.create({ payment_intent: existing!.stripe_payment_intent_id });
+        // Cancellation refunds are issued as an R&R class credit, not cash
+        // back to the customer's card — matches the studio's stated policy.
+        const clsForCredit = session?.classes as unknown as { price_pence: number } | null;
+        const expiresAt = new Date(Date.now() + PACK_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        const { error: creditErr } = await admin.from("class_packs").insert({
+          user_id: user.id,
+          kind: "refund_credit",
+          classes_total: 1,
+          classes_remaining: 1,
+          price_paid_pence: clsForCredit?.price_pence ?? 0,
+          stripe_payment_intent_id: existing!.stripe_payment_intent_id,
+          expires_at: expiresAt,
+        });
+        if (creditErr) throw creditErr;
         await admin
           .from("bookings")
           .update({ payment_status: "refunded", refunded_at: new Date().toISOString() })
@@ -375,13 +384,11 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
             minute: "2-digit",
           });
           const refundNote = refunded
-            ? existing?.paid_via_pack_id
-              ? "Your class credit has been returned to your account."
-              : "You've been refunded in full."
+            ? "A class credit has been added to your Revive & Reform account — refunds are issued as credit, not a cash refund."
             : refundFailed
-              ? "We couldn't process your refund automatically — Alix will sort this out manually within a few days."
+              ? "We couldn't process your credit automatically — Alix will sort this out manually within a few days."
               : noRefund
-                ? "As this was within 24 hours of the class, it wasn't refunded."
+                ? "As this was within 24 hours of the class, no credit was issued."
                 : "No payment was taken for this booking.";
           return sendCancellationEmails({ email: user.email!, className: cls.name, when, refundNote, refundFailed });
         })()

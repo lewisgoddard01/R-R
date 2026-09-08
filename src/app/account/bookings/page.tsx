@@ -55,18 +55,19 @@ export default async function MyBookings({
         </h1>
         <p className="lede intro">Everything you&apos;ve booked or joined the waitlist for.</p>
         <p className="lede intro" style={{ fontSize: "0.95rem" }}>
-          Cancellation policy: all cancellations within a 24-hour period are non-refundable.
-          Cancellations before this time will be fully refunded.
+          Cancellation policy: all cancellations within a 24-hour period don&apos;t receive credit.
+          Cancellations before this time are credited back to your Revive &amp; Reform account as a
+          class credit — not a cash refund to your card.
         </p>
 
         {refunded === "1" && (
           <div className="note-card" style={{ marginBottom: "1.5rem" }}>
-            <p>Booking cancelled — you&apos;ve been refunded in full.</p>
+            <p>Booking cancelled — a class credit has been added to your account.</p>
           </div>
         )}
         {norefund === "1" && (
           <div className="note-card" style={{ marginBottom: "1.5rem" }}>
-            <p>Booking cancelled — as this was within 24 hours of the class, it wasn&apos;t refunded.</p>
+            <p>Booking cancelled — as this was within 24 hours of the class, no credit was issued.</p>
           </div>
         )}
 
@@ -140,6 +141,15 @@ export default async function MyBookings({
                     <span className="crow__meta" style={{ color: "var(--muted)" }}>
                       {label}
                     </span>
+                    {s.classes?.name && (
+                      <Link
+                        href={`/book?class=${encodeURIComponent(s.classes.name)}`}
+                        className="admin-link-btn"
+                        style={{ gridColumn: "1/-1", marginTop: ".4rem" }}
+                      >
+                        Book again →
+                      </Link>
+                    )}
                   </div>
                 );
               })}

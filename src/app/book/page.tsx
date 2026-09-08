@@ -30,9 +30,9 @@ function briefDescription(description: string | null | undefined) {
 export default async function Book({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; joined?: string; cancelled?: string }>;
+  searchParams: Promise<{ error?: string; joined?: string; cancelled?: string; class?: string }>;
 }) {
-  const { error: errorMsg, joined, cancelled } = await searchParams;
+  const { error: errorMsg, joined, cancelled, class: classFilter } = await searchParams;
 
   if (!bookingsAreOpen()) {
     return (
@@ -68,6 +68,7 @@ export default async function Book({
   } = await supabase.auth.getUser();
 
   let waiverDone = false;
+  let hasCredit = false;
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -75,6 +76,17 @@ export default async function Book({
       .eq("id", user.id)
       .maybeSingle();
     waiverDone = Boolean(profile?.waiver_signed_at && profile?.health_completed_at && profile?.phone);
+
+    // Booking already spends a credit automatically before charging a card
+    // (see settlePaymentAndRedirect) — this just changes the button label so
+    // customers with a credit don't think they're about to be charged again.
+    const { count } = await supabase
+      .from("class_packs")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gt("classes_remaining", 0)
+      .gt("expires_at", new Date().toISOString());
+    hasCredit = Boolean(count && count > 0);
   }
 
   const now = new Date();
@@ -88,7 +100,8 @@ export default async function Book({
     .lte("starts_at", horizon.toISOString())
     .order("starts_at", { ascending: true });
 
-  const rows = (sessions ?? []) as unknown as SessionRow[];
+  const allRows = (sessions ?? []) as unknown as SessionRow[];
+  const rows = classFilter ? allRows.filter((r) => r.classes?.name === classFilter) : allRows;
   const ids = rows.map((r) => r.id);
 
   const [{ data: availability }, { data: myBookings }] = await Promise.all([
@@ -140,6 +153,18 @@ export default async function Book({
           someone drops out, everyone waiting is emailed automatically so you can claim the spot.
         </p>
         <Rule />
+
+        {classFilter && (
+          <div className="note-card" data-reveal style={{ marginBottom: "2rem" }}>
+            <p>
+              Showing only <strong>{classFilter}</strong> —{" "}
+              <Link href="/book" style={{ color: "var(--orange)" }}>
+                show every class
+              </Link>
+              .
+            </p>
+          </div>
+        )}
 
         {errorMsg && (
           <div className="note-card" data-reveal style={{ marginBottom: "2rem" }}>
@@ -242,7 +267,7 @@ export default async function Book({
                       {canAct && !pastCutoff && spacesLeft > 0 && (
                         <form action={payAndBook.bind(null, s.id)} style={{ gridColumn: "1/-1" }}>
                           <button type="submit" className="btn btn--primary" style={{ marginTop: ".6rem" }}>
-                            Book — £{((s.classes?.price_pence ?? 0) / 100).toFixed(2)}
+                            {hasCredit ? "Book — use 1 credit" : `Book — £${((s.classes?.price_pence ?? 0) / 100).toFixed(2)}`}
                           </button>
                         </form>
                       )}
