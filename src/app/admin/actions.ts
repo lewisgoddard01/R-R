@@ -8,6 +8,7 @@ import { sendSessionCancelledEmail, sendBookingConfirmationEmail } from "@/lib/b
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { ukWallTimeToUTC } from "@/lib/uk-time";
 import { PACK_VALIDITY_DAYS } from "@/lib/packs";
+import { notifyWaitlistOfOpening } from "@/lib/waitlist";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -364,4 +365,102 @@ export async function updateSessionAction(sessionId: string, classId: string, fo
   revalidatePath("/book");
   revalidatePath("/timetable");
   return { error: error?.message };
+}
+
+// Lets an admin pull one specific customer off a class — a mistaken booking,
+// a phoned-in cancellation, a no-show being removed, etc. — from either the
+// class roster or the customer's own admin page. Always refunds as account
+// credit if they'd paid (this is studio-initiated, so the customer's normal
+// 24-hour cancellation cutoff doesn't apply), and offers the freed spot to
+// the waitlist exactly as a self-service cancellation does.
+export async function adminRemoveBookingAction(bookingId: string) {
+  await requireAdmin();
+  const admin = createAdminClient();
+
+  const { data: booking } = await admin
+    .from("bookings")
+    .select("id, user_id, status, payment_status, paid_via_pack_id, stripe_payment_intent_id, session_id")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (!booking) return { error: "Booking not found." };
+  if (booking.status === "cancelled") return { error: "That booking is already cancelled." };
+
+  const { data: session } = await admin
+    .from("class_sessions")
+    .select("starts_at, classes(name, price_pence)")
+    .eq("id", booking.session_id)
+    .maybeSingle();
+  const classInfo = session?.classes as unknown as { name: string; price_pence: number } | null;
+  const className = classInfo?.name ?? "the class";
+  const when = session?.starts_at
+    ? new Date(session.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",         weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
+  const now = new Date().toISOString();
+  const wasBooked = booking.status === "booked";
+  let refunded = false;
+  let refundFailed = false;
+
+  await admin.from("bookings").update({ status: "cancelled", cancelled_at: now }).eq("id", bookingId);
+
+  if (wasBooked && booking.payment_status === "paid") {
+    try {
+      if (booking.paid_via_pack_id) {
+        await admin.rpc("admin_refund_pack_credit", { p_pack_id: booking.paid_via_pack_id });
+        await admin.from("bookings").update({ refunded_at: now }).eq("id", bookingId);
+      } else if (booking.stripe_payment_intent_id) {
+        const expiresAt = new Date(Date.now() + PACK_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        const { error: creditErr } = await admin.from("class_packs").insert({
+          user_id: booking.user_id,
+          kind: "refund_credit",
+          classes_total: 1,
+          classes_remaining: 1,
+          price_paid_pence: classInfo?.price_pence ?? 0,
+          stripe_payment_intent_id: booking.stripe_payment_intent_id,
+          expires_at: expiresAt,
+        });
+        if (creditErr) throw creditErr;
+        await admin.from("bookings").update({ payment_status: "refunded", refunded_at: now }).eq("id", bookingId);
+      }
+      refunded = true;
+    } catch {
+      refundFailed = true;
+    }
+  }
+
+  const { data: userRes } = await admin.auth.admin.getUserById(booking.user_id);
+  const email = userRes?.user?.email;
+  if (email) {
+    const refundNote = !wasBooked
+      ? "You were on the waitlist for this class, so no payment was taken."
+      : refunded
+        ? "A class credit has been added to your Revive & Reform account — refunds are issued as credit, not a cash refund."
+        : refundFailed
+          ? "We couldn't process your credit automatically — Alix will sort this out manually."
+          : "No payment was taken for this booking.";
+    await sendSessionCancelledEmail({ email, className, when, refundNote });
+  }
+
+  if (refundFailed) {
+    await sendEmail({
+      to: ADMIN_EMAIL,
+      subject: `ACTION NEEDED — refund failed removing a booking from ${className}`,
+      html: `<p>Removing a booking from <strong>${className}</strong> on ${when} failed to auto-refund. Please check and refund manually from the Stripe dashboard or admin panel. Booking ID: ${bookingId}</p>`,
+    }).catch(() => {});
+  }
+
+  await notifyWaitlistOfOpening(booking.session_id);
+
+  revalidatePath(`/admin/roster/${booking.session_id}`);
+  revalidatePath(`/admin/customers/${booking.user_id}`);
+  revalidatePath("/admin/timetable");
+  revalidatePath("/book");
+  revalidatePath("/account/bookings");
+  revalidatePath("/admin");
+  return { error: undefined };
 }
