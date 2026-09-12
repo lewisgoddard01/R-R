@@ -310,12 +310,19 @@ export async function cancelBookingAction(bookingId: string, sessionId: string) 
   const [{ data: existing }, { data: session }] = await Promise.all([
     supabase
       .from("bookings")
-      .select("payment_status, stripe_payment_intent_id, paid_via_pack_id")
+      .select("status, payment_status, stripe_payment_intent_id, paid_via_pack_id")
       .eq("id", bookingId)
       .eq("user_id", user.id)
       .maybeSingle(),
     supabase.from("class_sessions").select("starts_at, classes(name, price_pence)").eq("id", sessionId).maybeSingle(),
   ]);
+
+  // Guards against a double-submit (slow network, an impatient second tap)
+  // re-running the refund and re-sending the cancellation email for a
+  // booking that's already been cancelled.
+  if (!existing || existing.status === "cancelled") {
+    return { ok: true, refunded: false, noRefund: false, refundFailed: false };
+  }
 
   const { error } = await supabase
     .from("bookings")

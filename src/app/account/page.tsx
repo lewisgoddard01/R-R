@@ -78,13 +78,34 @@ export default async function Account({
                 {waiverDone ? "Completed ✓" : "Not completed yet"}
               </span>
             </div>
-            {totalCredits > 0 && (
+            {totalCredits > 0 && (packs?.length ?? 0) <= 1 && (
               <div className="account__row">
                 <span>Class credits</span>
                 <span style={{ color: "var(--orange)" }}>
                   {totalCredits} class{totalCredits === 1 ? "" : "es"} left
                   {nextExpiry &&
                     ` · expires ${new Date(nextExpiry).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "long" })}`}
+                </span>
+              </div>
+            )}
+            {/* More than one active pack can have different expiry dates — a
+                single merged "expires" line would misleadingly attach the
+                soonest date to every credit, including ones from a pack
+                bought much more recently. */}
+            {totalCredits > 0 && (packs?.length ?? 0) > 1 && (
+              <div className="account__row" style={{ alignItems: "start" }}>
+                <span>Class credits</span>
+                <span style={{ color: "var(--orange)" }}>
+                  {packs!.map((p, i) => (
+                    <span key={i} style={{ display: "block" }}>
+                      {p.classes_remaining} class{p.classes_remaining === 1 ? "" : "es"} — expires{" "}
+                      {new Date(p.expires_at).toLocaleDateString("en-GB", {
+                        timeZone: "Europe/London",
+                        day: "numeric",
+                        month: "long",
+                      })}
+                    </span>
+                  ))}
                 </span>
               </div>
             )}
