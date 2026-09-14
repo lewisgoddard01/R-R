@@ -5,6 +5,12 @@ import { Rule } from "@/components/rule";
 import { bookSessionAction, createCheckoutAction } from "./actions";
 import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL, bookingHorizon } from "@/lib/booking-window";
 import { ukParts, ukWallTimeToUTC } from "@/lib/uk-time";
+import { BookingCalendar, type BookingDayView, type BookingSessionView } from "@/components/booking-calendar";
+
+const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+function dateKey(y: number, m: number, d: number) {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
 
 export const metadata: Metadata = {
   title: "Book a class — Revive & Reform",
@@ -132,15 +138,98 @@ export default async function Book({
     await createCheckoutAction(sessionId);
   }
 
-  const byDay = new Map<string, SessionRow[]>();
+  // Every calendar day from today through the booking horizon (inclusive),
+  // in UK dates — not just days that already have a session — so the
+  // calendar shows a real month rather than only the days with classes on.
+  const todayUK = ukParts(now);
+  const horizonUK = ukParts(horizon);
+  const todayKey = dateKey(todayUK.year, todayUK.month, todayUK.day);
+
+  const sessionsByDayKey = new Map<string, SessionRow[]>();
   rows.forEach((r) => {
-    const key = new Date(r.starts_at).toLocaleDateString("en-GB", { timeZone: "Europe/London",       weekday: "long",
-      day: "numeric",
-      month: "long",
-    });
-    if (!byDay.has(key)) byDay.set(key, []);
-    byDay.get(key)!.push(r);
+    const p = ukParts(new Date(r.starts_at));
+    const key = dateKey(p.year, p.month, p.day);
+    if (!sessionsByDayKey.has(key)) sessionsByDayKey.set(key, []);
+    sessionsByDayKey.get(key)!.push(r);
   });
+
+  const days: BookingDayView[] = [];
+  const cursor = new Date(Date.UTC(todayUK.year, todayUK.month - 1, todayUK.day, 12));
+  const horizonCursor = new Date(Date.UTC(horizonUK.year, horizonUK.month - 1, horizonUK.day, 12));
+  while (cursor <= horizonCursor) {
+    const y = cursor.getUTCFullYear();
+    const m = cursor.getUTCMonth() + 1;
+    const d = cursor.getUTCDate();
+    const key = dateKey(y, m, d);
+    const daySessions = (sessionsByDayKey.get(key) ?? []).map((s): BookingSessionView => {
+      const spacesLeft = spacesById.get(s.id) ?? s.capacity;
+      const mine = myStatusById.get(s.id);
+      const time = new Date(s.starts_at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
+      const canAct = Boolean(user && waiverDone && !mine);
+
+      const startUK = ukParts(new Date(s.starts_at));
+      let pastCutoff = false;
+      if (startUK.hour === 9 && startUK.minute === 0) {
+        const dayBefore = new Date(Date.UTC(startUK.year, startUK.month - 1, startUK.day - 1));
+        const cutoffDate = dateKey(dayBefore.getUTCFullYear(), dayBefore.getUTCMonth() + 1, dayBefore.getUTCDate());
+        const cutoff = ukWallTimeToUTC(cutoffDate, "20:00");
+        pastCutoff = now > cutoff;
+      }
+
+      let metaText: string;
+      let metaColor: "orange" | "muted";
+      if (mine === "booked") {
+        metaText = "You're booked ✓";
+        metaColor = "orange";
+      } else if (mine === "waitlisted") {
+        metaText = "On the waitlist";
+        metaColor = "muted";
+      } else if (spacesLeft > 0) {
+        metaText = `${spacesLeft} space${spacesLeft === 1 ? "" : "s"} left`;
+        metaColor = "muted";
+      } else {
+        metaText = "Full";
+        metaColor = "muted";
+      }
+
+      let actionKind: "pay" | "waitlist" | null = null;
+      let actionLabel: string | null = null;
+      if (canAct && !pastCutoff) {
+        if (spacesLeft > 0) {
+          actionKind = "pay";
+          actionLabel = hasCredit ? "Book — use 1 credit" : `Book — £${((s.classes?.price_pence ?? 0) / 100).toFixed(2)}`;
+        } else {
+          actionKind = "waitlist";
+          actionLabel = "Join the waitlist";
+        }
+      }
+
+      return {
+        id: s.id,
+        time,
+        className: s.classes?.name ?? "Class",
+        instructor: s.instructor || "",
+        metaText,
+        metaColor,
+        description: briefDescription(s.classes?.description),
+        cutoffNotice: canAct && pastCutoff,
+        actionKind,
+        actionLabel,
+      };
+    });
+    daySessions.sort((a, b) => a.time.localeCompare(b.time));
+
+    days.push({
+      key,
+      weekday: WEEKDAY_NAMES[cursor.getUTCDay()],
+      dayNumber: d,
+      fullLabel: cursor.toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" }),
+      isToday: key === todayKey,
+      sessions: daySessions,
+    });
+
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
 
   return (
     <section className="sec page-head">
@@ -208,7 +297,7 @@ export default async function Book({
           </div>
         )}
 
-        {byDay.size === 0 ? (
+        {days.every((d) => d.sessions.length === 0) ? (
           <p className="admin-empty" data-reveal>
             Nothing&apos;s scheduled yet — check back soon, or{" "}
             <Link href="/contact" style={{ color: "var(--orange)" }}>
@@ -217,73 +306,7 @@ export default async function Book({
             .
           </p>
         ) : (
-          Array.from(byDay.entries()).map(([day, daySessions]) => (
-            <div key={day} data-reveal style={{ marginBottom: "2.2rem" }}>
-              <h3 style={{ fontFamily: "var(--serif)", fontSize: "1.3rem", color: "var(--orange)", marginBottom: ".8rem" }}>
-                {day}
-              </h3>
-              <div className="clist">
-                {daySessions.map((s) => {
-                  const spacesLeft = spacesById.get(s.id) ?? s.capacity;
-                  const mine = myStatusById.get(s.id);
-                  const time = new Date(s.starts_at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
-                  const canAct = user && waiverDone && !mine;
-
-                  // 9am classes must be booked by 8pm UK time the evening
-                  // before — mirrors the server-side check in book_session().
-                  const startDate = new Date(s.starts_at);
-                  const startUK = ukParts(startDate);
-                  let pastCutoff = false;
-                  if (startUK.hour === 9 && startUK.minute === 0) {
-                    const dayBefore = new Date(Date.UTC(startUK.year, startUK.month - 1, startUK.day - 1));
-                    const cutoffDate = `${dayBefore.getUTCFullYear()}-${String(dayBefore.getUTCMonth() + 1).padStart(2, "0")}-${String(dayBefore.getUTCDate()).padStart(2, "0")}`;
-                    const cutoff = ukWallTimeToUTC(cutoffDate, "20:00");
-                    pastCutoff = now > cutoff;
-                  }
-
-                  return (
-                    <div className="crow" key={s.id}>
-                      <span className="crow__name">
-                        {time} — {s.classes?.name}
-                      </span>
-                      <span className="crow__tag">{s.instructor || ""}</span>
-                      <span className="crow__meta">
-                        {mine === "booked" && <span style={{ color: "var(--orange)" }}>You&apos;re booked ✓</span>}
-                        {mine === "waitlisted" && <span style={{ color: "var(--muted)" }}>On the waitlist</span>}
-                        {!mine && spacesLeft > 0 && `${spacesLeft} space${spacesLeft === 1 ? "" : "s"} left`}
-                        {!mine && spacesLeft <= 0 && "Full"}
-                      </span>
-
-                      {briefDescription(s.classes?.description) && (
-                        <p className="crow__desc">{briefDescription(s.classes?.description)}</p>
-                      )}
-
-                      {canAct && pastCutoff && (
-                        <p style={{ gridColumn: "1/-1", color: "var(--muted)", fontSize: ".85rem", marginTop: ".4rem" }}>
-                          Booking&apos;s closed for this one — 9am classes need to be booked by 8pm the evening
-                          before.
-                        </p>
-                      )}
-                      {canAct && !pastCutoff && spacesLeft > 0 && (
-                        <form action={payAndBook.bind(null, s.id)} style={{ gridColumn: "1/-1" }}>
-                          <button type="submit" className="btn btn--primary" style={{ marginTop: ".6rem" }}>
-                            {hasCredit ? "Book — use 1 credit" : `Book — £${((s.classes?.price_pence ?? 0) / 100).toFixed(2)}`}
-                          </button>
-                        </form>
-                      )}
-                      {canAct && !pastCutoff && spacesLeft <= 0 && (
-                        <form action={book.bind(null, s.id)} style={{ gridColumn: "1/-1" }}>
-                          <button type="submit" className="btn btn--ghost" style={{ marginTop: ".6rem" }}>
-                            Join the waitlist
-                          </button>
-                        </form>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))
+          <BookingCalendar days={days} book={book} payAndBook={payAndBook} />
         )}
       </div>
     </section>
