@@ -6,6 +6,7 @@ import { bookSessionAction, createCheckoutAction } from "./actions";
 import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL, bookingHorizon } from "@/lib/booking-window";
 import { ukParts, ukWallTimeToUTC } from "@/lib/uk-time";
 import { BookingCalendar, type BookingDayView, type BookingSessionView } from "@/components/booking-calendar";
+import { BEST_BUNDLE, bundleSavingsPence } from "@/lib/packs";
 
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 function dateKey(y: number, m: number, d: number) {
@@ -292,6 +293,22 @@ export default async function Book({
             <p style={{ marginTop: "1rem" }}>
               <Link href="/account/waiver" className="btn btn--primary">
                 Complete health &amp; waiver <span className="btn__x">→</span>
+              </Link>
+            </p>
+          </div>
+        )}
+        {user && waiverDone && !hasCredit && (
+          <div className="note-card" data-reveal style={{ marginBottom: "2rem" }}>
+            <h3>Booking one at a time?</h3>
+            <p>
+              A single class is £20. Buy the {BEST_BUNDLE.label} bundle instead and it works out at
+              just £{(BEST_BUNDLE.pricePence / 100 / BEST_BUNDLE.classes).toFixed(2)} a class — a
+              saving of £{(bundleSavingsPence(BEST_BUNDLE) / 100).toFixed(2)} over paying one at a
+              time.
+            </p>
+            <p style={{ marginTop: "1rem" }}>
+              <Link href="/pricing#bundles" className="btn btn--ghost">
+                See bundle pricing <span className="btn__x">→</span>
               </Link>
             </p>
           </div>

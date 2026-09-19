@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Rule, Leaf } from "@/components/rule";
 import { createBundleCheckoutAction } from "@/app/book/actions";
-import { WELCOME_PACK, BUNDLES } from "@/lib/packs";
+import { WELCOME_PACK, BUNDLES, bundleSavingsPence } from "@/lib/packs";
 import { createClient } from "@/lib/supabase/server";
 import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
 
@@ -93,7 +93,9 @@ export default async function Pricing({
           <div className="price-row">
             <span className="price-row__name">
               Individual class
-              <small>Single session</small>
+              <small>
+                Single session · <a href="#bundles" style={{ color: "var(--orange)" }}>bundles save you money</a>
+              </small>
             </span>
             <span className="price-row__amt">£20</span>
           </div>
@@ -120,16 +122,24 @@ export default async function Pricing({
           </div>
         </div>
 
-        <div className="bundles" data-reveal>
-          <h3>Bundles</h3>
-          {BUNDLES.map((b) => (
-            <div className="bundle" key={b.kind}>
-              <b>
-                {b.label} <small>· £{(b.pricePence / 100 / b.classes).toFixed(2)} per class</small>
-              </b>
-              <span>£{(b.pricePence / 100).toFixed(2)}</span>
-            </div>
-          ))}
+        <div className="bundles" id="bundles" data-reveal>
+          <h3>Bundles — pay per class, but less</h3>
+          {BUNDLES.map((b) => {
+            const savings = bundleSavingsPence(b);
+            return (
+              <div className="bundle" key={b.kind}>
+                <b>
+                  {b.label} <small>· £{(b.pricePence / 100 / b.classes).toFixed(2)} per class</small>
+                  {savings > 0 && (
+                    <small style={{ color: "var(--orange)", display: "block" }}>
+                      Save £{(savings / 100).toFixed(2)} vs booking one at a time
+                    </small>
+                  )}
+                </b>
+                <span>£{(b.pricePence / 100).toFixed(2)}</span>
+              </div>
+            );
+          })}
           {open &&
             BUNDLES.map((b) => (
               <form action={buyBundle.bind(null, b.kind)} key={b.kind} style={{ marginTop: ".6rem" }}>
