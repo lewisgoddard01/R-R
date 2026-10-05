@@ -34,6 +34,20 @@ export default async function Pricing({
     welcomeOfferUsed = Boolean(data);
   }
 
+  const { data: priceRows } = await supabase
+    .from("pricing_items")
+    .select("id, name, subtitle, price_label, featured")
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  const priceItems = (priceRows ?? []) as {
+    id: string;
+    name: string;
+    subtitle: string | null;
+    price_label: string;
+    featured: boolean;
+  }[];
+
   async function buyWelcome() {
     "use server";
     await createBundleCheckoutAction(WELCOME_PACK.kind);
@@ -89,38 +103,24 @@ export default async function Pricing({
           <span className="price-row__amt">£20</span>
         </div>
 
-        <div className="prices" data-reveal>
-          <div className="price-row">
-            <span className="price-row__name">
-              Individual class
-              <small>
-                Single session · <a href="#bundles" style={{ color: "var(--orange)" }}>bundles save you money</a>
-              </small>
-            </span>
-            <span className="price-row__amt">£20</span>
+        {priceItems.length > 0 && (
+          <div className="prices" data-reveal>
+            {priceItems.map((item) => (
+              <div className="price-row" key={item.id}>
+                <span className="price-row__name">
+                  {item.featured ? <Leaf label={item.name} /> : item.name}
+                  {item.subtitle && <small>{item.subtitle}</small>}
+                </span>
+                <span className="price-row__amt">{item.price_label}</span>
+              </div>
+            ))}
           </div>
-          <div className="price-row">
-            <span className="price-row__name">
-              Private class
-              <small>One-to-one session</small>
-            </span>
-            <span className="price-row__amt">£40</span>
-          </div>
-          <div className="price-row">
-            <span className="price-row__name">
-              Private group
-              <small>Available on request</small>
-            </span>
-            <span className="price-row__amt">POA</span>
-          </div>
-          <div className="price-row">
-            <span className="price-row__name">
-              <Leaf label="Birthday class" />
-              <small>A free class on your birthday — ID required</small>
-            </span>
-            <span className="price-row__amt">Free</span>
-          </div>
-        </div>
+        )}
+        <p style={{ marginTop: ".8rem", fontSize: ".9rem" }} data-reveal>
+          <a href="#bundles" style={{ color: "var(--orange)" }}>
+            Coming regularly? Bundles save you money ↓
+          </a>
+        </p>
 
         <div className="bundles" id="bundles" data-reveal>
           <h3>Bundles — pay per class, but less</h3>

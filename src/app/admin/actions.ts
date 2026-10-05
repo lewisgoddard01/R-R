@@ -66,6 +66,50 @@ export async function updateClassAction(classId: string, formData: FormData) {
   return { error: error?.message };
 }
 
+// ── Pricing page items ───────────────────────────────────────────────
+function pricingFields(formData: FormData) {
+  return {
+    name: str(formData.get("name")),
+    subtitle: str(formData.get("subtitle")) || null,
+    price_label: str(formData.get("price_label")),
+    featured: formData.get("featured") === "on",
+    sort_order: num(formData.get("sort_order"), 0),
+  };
+}
+
+function revalidatePricing() {
+  revalidatePath("/pricing");
+  revalidatePath("/admin/pricing");
+}
+
+export async function createPricingItemAction(formData: FormData) {
+  const supabase = await requireAdmin();
+  const { error } = await supabase.from("pricing_items").insert({ ...pricingFields(formData), active: true });
+  revalidatePricing();
+  return { error: error?.message };
+}
+
+export async function updatePricingItemAction(itemId: string, formData: FormData) {
+  const supabase = await requireAdmin();
+  const { error } = await supabase.from("pricing_items").update(pricingFields(formData)).eq("id", itemId);
+  revalidatePricing();
+  return { error: error?.message };
+}
+
+export async function setPricingItemActiveAction(itemId: string, active: boolean) {
+  const supabase = await requireAdmin();
+  const { error } = await supabase.from("pricing_items").update({ active }).eq("id", itemId);
+  revalidatePricing();
+  return { error: error?.message };
+}
+
+export async function deletePricingItemAction(itemId: string) {
+  const supabase = await requireAdmin();
+  const { error } = await supabase.from("pricing_items").delete().eq("id", itemId);
+  revalidatePricing();
+  return { error: error?.message };
+}
+
 export async function deleteClassAction(classId: string) {
   const supabase = await requireAdmin();
   const { error } = await supabase.from("classes").delete().eq("id", classId);
