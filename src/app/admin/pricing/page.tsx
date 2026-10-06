@@ -18,6 +18,13 @@ type PricingItem = {
   active: boolean;
 };
 
+// Module scope on purpose: inline server actions serialise any variable they
+// close over, and a function can't be serialised.
+function done(error: string | undefined, message: string): never {
+  if (error) redirect(`/admin/pricing?error=${encodeURIComponent(error)}`);
+  redirect(`/admin/pricing?saved=${encodeURIComponent(message)}`);
+}
+
 export default async function AdminPricing({
   searchParams,
 }: {
@@ -31,11 +38,6 @@ export default async function AdminPricing({
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
   const items = (data ?? []) as PricingItem[];
-
-  function done(error: string | undefined, message: string): never {
-    if (error) redirect(`/admin/pricing?error=${encodeURIComponent(error)}`);
-    redirect(`/admin/pricing?saved=${encodeURIComponent(message)}`);
-  }
 
   async function addItem(formData: FormData) {
     "use server";
