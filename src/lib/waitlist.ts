@@ -45,6 +45,7 @@ export async function notifyWaitlistOfOpening(sessionId: string) {
 
   const sent: string[] = [];
   const failed: string[] = [];
+  const log: { session_id: string; user_id: string; recipient: string; sent: boolean }[] = [];
 
   await Promise.all(
     waitlisted.map(async (booking) => {
@@ -53,7 +54,9 @@ export async function notifyWaitlistOfOpening(sessionId: string) {
         const { data: userRes } = await admin.auth.admin.getUserById(booking.user_id);
         const email = userRes?.user?.email;
         if (!email) {
-          failed.push(`${label} (no email address on file)`);
+          label = `${label} (no email address on file)`;
+          failed.push(label);
+          log.push({ session_id: sessionId, user_id: booking.user_id, recipient: label, sent: false });
           return;
         }
         label = `${label} (${email})`;
@@ -63,11 +66,19 @@ export async function notifyWaitlistOfOpening(sessionId: string) {
           html: `<p>Good news — a spot just opened up in <strong>${className}</strong> on ${when}, and you're on the waitlist.</p><p>It's first come, first served, so if you'd still like it, book onto the class now:</p><p><a href="${BASE_URL}/book/claim?booking_id=${booking.id}" style="color:#EA7B2B;font-weight:600;">Book onto this class →</a></p><p>If you're no longer able to make it, no action needed — you'll stay on the waitlist for next time.</p><p>— Revive &amp; Reform</p>`,
         });
         sent.push(label);
+        log.push({ session_id: sessionId, user_id: booking.user_id, recipient: label, sent: true });
       } catch {
         // One failed email shouldn't stop the others from being notified.
         failed.push(label);
+        log.push({ session_id: sessionId, user_id: booking.user_id, recipient: label, sent: false });
       }
     })
+  );
+
+  // Record for the admin dashboard; a logging failure must never block emails.
+  await admin.from("waitlist_notifications").insert(log).then(
+    () => {},
+    () => {}
   );
 
   const list = (people: string[]) => `<ul>${people.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`;

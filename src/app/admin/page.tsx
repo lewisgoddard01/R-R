@@ -67,6 +67,29 @@ export default async function AdminOverview() {
       }));
   }
 
+  const { data: notified } = await admin
+    .from("waitlist_notifications")
+    .select("id, recipient, sent, created_at, class_sessions(starts_at, classes(name))")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  type NotifiedRow = {
+    id: string;
+    recipient: string;
+    sent: boolean;
+    created_at: string;
+    class_sessions: { starts_at: string; classes: { name: string } | null } | null;
+  };
+  const notifiedRows = (notified ?? []) as unknown as NotifiedRow[];
+  const shortDateTime = (iso: string) =>
+    new Date(iso).toLocaleString("en-GB", {
+      timeZone: "Europe/London",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
   // Recent cancellations — same RLS-bypass reasoning as the waitlist above.
   const { data: cancelled } = await admin
     .from("bookings")
@@ -146,6 +169,29 @@ export default async function AdminOverview() {
                 <span>{w.className}</span>
                 <span>{w.when}</span>
                 <span>waiting since {w.waitingSince}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="admin-card" style={{ marginTop: "1.5rem" }}>
+        <h3>Waitlist emails sent</h3>
+        <p style={{ color: "var(--muted)", marginBottom: "1rem", fontSize: ".9rem" }}>
+          When a spot opens up, everyone waiting is emailed a link to book it — first to book gets it.
+        </p>
+        {notifiedRows.length === 0 ? (
+          <p className="admin-empty">No waitlist emails have gone out yet.</p>
+        ) : (
+          <div className="admin-table">
+            {notifiedRows.map((n) => (
+              <div className="admin-row" key={n.id}>
+                <span>{n.recipient}</span>
+                <span>{n.class_sessions?.classes?.name ?? ""}</span>
+                <span>{n.class_sessions ? shortDateTime(n.class_sessions.starts_at) : ""}</span>
+                <span style={n.sent ? undefined : { color: "var(--orange)" }}>
+                  {n.sent ? `✓ emailed ${shortDateTime(n.created_at)}` : "⚠ didn't send — contact them directly"}
+                </span>
               </div>
             ))}
           </div>
