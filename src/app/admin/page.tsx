@@ -1,8 +1,22 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { creditCancelledBookingAction } from "@/app/admin/actions";
 
-export default async function AdminOverview() {
+async function creditNow(bookingId: string) {
+  "use server";
+  const { error } = await creditCancelledBookingAction(bookingId);
+  if (error) redirect(`/admin?error=${encodeURIComponent(error)}`);
+  redirect("/admin?saved=Credit%20added%20to%20their%20account.");
+}
+
+export default async function AdminOverview({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; saved?: string }>;
+}) {
+  const { error: errorMsg, saved } = await searchParams;
   const supabase = await createClient();
   const now = new Date().toISOString();
 
@@ -125,7 +139,16 @@ export default async function AdminOverview() {
     : { data: [] };
   const creditedIntents = new Set((creditPacks ?? []).map((p) => p.stripe_payment_intent_id));
 
-  let cancelDisplay: { id: string; who: string; className: string; when: string; cancelledOn: string; outcome: string }[] = [];
+  let cancelDisplay: {
+    id: string;
+    userId: string;
+    who: string;
+    className: string;
+    when: string;
+    cancelledOn: string;
+    outcome: string;
+    needsCredit: boolean;
+  }[] = [];
   if (cancelRows.length > 0) {
     const uniqueIds = Array.from(new Set(cancelRows.map((c) => c.user_id)));
     const [{ data: profiles }, { data: usersPage }] = await Promise.all([
@@ -137,6 +160,11 @@ export default async function AdminOverview() {
 
     cancelDisplay = cancelRows.map((c) => ({
       id: c.id,
+      userId: c.user_id,
+      needsCredit:
+        !c.refunded_at &&
+        c.payment_status === "paid" &&
+        +new Date(c.class_sessions!.starts_at) - +new Date(c.cancelled_at) >= 24 * 60 * 60 * 1000,
       who: nameById.get(c.user_id) || emailById.get(c.user_id) || "Unknown customer",
       className: c.class_sessions!.classes?.name ?? "",
       when: new Date(c.class_sessions!.starts_at).toLocaleString("en-GB", { timeZone: "Europe/London",         weekday: "short",
@@ -164,6 +192,8 @@ export default async function AdminOverview() {
 
   return (
     <>
+      {errorMsg && <p style={{ color: "var(--orange)", marginTop: "1.5rem" }}>Couldn&apos;t do that: {errorMsg}</p>}
+      {saved && !errorMsg && <p style={{ color: "var(--muted)", marginTop: "1.5rem" }}>✓ {saved}</p>}
       <div className="admin-stats">
         <div className="admin-stat">
           <span>{classCount ?? 0}</span>
@@ -228,11 +258,18 @@ export default async function AdminOverview() {
           <div className="admin-table">
             {cancelDisplay.map((c) => (
               <div className="admin-row" key={c.id}>
-                <span>{c.who}</span>
+                <Link href={`/admin/customers/${c.userId}`}>{c.who}</Link>
                 <span>{c.className}</span>
                 <span>{c.when}</span>
-                <span>
+                <span style={c.needsCredit ? { color: "var(--orange)" } : undefined}>
                   cancelled {c.cancelledOn} · {c.outcome}
+                  {c.needsCredit && (
+                    <form action={creditNow.bind(null, c.id)} style={{ display: "inline", marginLeft: ".6rem" }}>
+                      <button type="submit" className="admin-link-btn">
+                        Add credit now
+                      </button>
+                    </form>
+                  )}
                 </span>
               </div>
             ))}

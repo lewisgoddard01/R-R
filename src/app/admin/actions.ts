@@ -66,6 +66,108 @@ export async function updateClassAction(classId: string, formData: FormData) {
   return { error: error?.message };
 }
 
+// ── Class credits ────────────────────────────────────────────────────
+export async function addCreditsAction(userId: string, formData: FormData) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const count = Math.round(num(formData.get("count"), 1));
+  if (count < 1 || count > 20) return { error: "Pick between 1 and 20 credits." };
+
+  const expiresAt = new Date(Date.now() + PACK_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
+  const { error } = await admin.from("class_packs").insert({
+    user_id: userId,
+    kind: "admin_credit",
+    classes_total: count,
+    classes_remaining: count,
+    price_paid_pence: 0,
+    expires_at: expiresAt.toISOString(),
+  });
+  if (error) return { error: error.message };
+
+  if (formData.get("notify") === "on") {
+    const { data: userRes } = await admin.auth.admin.getUserById(userId);
+    const email = userRes?.user?.email;
+    if (email) {
+      const expiry = expiresAt.toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "long" });
+      await sendEmail({
+        to: email,
+        subject: `${count} class credit${count === 1 ? "" : "s"} added to your account`,
+        html: `<p>We've added <strong>${count} class credit${count === 1 ? "" : "s"}</strong> to your Revive &amp; Reform account, to use by ${expiry}.</p><p>It'll be used automatically next time you book — no payment needed.</p><p><a href="https://reviveandreform.co.uk/book" style="color:#EA7B2B;font-weight:600;">Book a class →</a></p><p>— Revive &amp; Reform</p>`,
+      }).catch(() => {});
+    }
+  }
+
+  revalidatePath(`/admin/customers/${userId}`);
+  return { error: undefined };
+}
+
+export async function takeBackCreditAction(packId: string, userId: string) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const { data: pack } = await admin
+    .from("class_packs")
+    .select("classes_remaining")
+    .eq("id", packId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!pack || pack.classes_remaining < 1) return { error: "There's no unused credit left on that to take back." };
+
+  const { error } = await admin
+    .from("class_packs")
+    .update({ classes_remaining: pack.classes_remaining - 1 })
+    .eq("id", packId)
+    .eq("classes_remaining", pack.classes_remaining);
+  revalidatePath(`/admin/customers/${userId}`);
+  return { error: error?.message };
+}
+
+// For a cancellation that should have been credited but wasn't (shown as
+// "credit not added" on the overview). Claims the booking first so a double
+// click can't issue two credits.
+export async function creditCancelledBookingAction(bookingId: string) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: claimed } = await admin
+    .from("bookings")
+    .update({ refunded_at: now })
+    .eq("id", bookingId)
+    .eq("status", "cancelled")
+    .eq("payment_status", "paid")
+    .is("refunded_at", null)
+    .select("user_id, paid_via_pack_id, stripe_payment_intent_id, class_sessions(classes(price_pence))")
+    .maybeSingle();
+  if (!claimed) return { error: "That cancellation has already been sorted." };
+
+  try {
+    if (claimed.paid_via_pack_id) {
+      const { error } = await admin.rpc("admin_refund_pack_credit", { p_pack_id: claimed.paid_via_pack_id });
+      if (error) throw error;
+    } else {
+      const session = claimed.class_sessions as unknown as { classes: { price_pence: number } | null } | null;
+      const { error } = await admin.from("class_packs").insert({
+        user_id: claimed.user_id,
+        kind: "refund_credit",
+        classes_total: 1,
+        classes_remaining: 1,
+        price_paid_pence: session?.classes?.price_pence ?? 0,
+        stripe_payment_intent_id: claimed.stripe_payment_intent_id,
+        expires_at: new Date(Date.now() + PACK_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      if (error) throw error;
+      await admin.from("bookings").update({ payment_status: "refunded" }).eq("id", bookingId);
+    }
+  } catch (e) {
+    await admin.from("bookings").update({ refunded_at: null }).eq("id", bookingId);
+    return { error: (e as { message?: string })?.message ?? "Couldn't add the credit." };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath(`/admin/customers/${claimed.user_id}`);
+  return { error: undefined };
+}
+
 // ── Pricing page items ───────────────────────────────────────────────
 function pricingFields(formData: FormData) {
   return {

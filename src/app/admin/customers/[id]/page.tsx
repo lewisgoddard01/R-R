@@ -2,7 +2,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { conditionLabel, type HealthAnswers } from "@/lib/health-questionnaire";
-import { adminRemoveBookingAction } from "@/app/admin/actions";
+import { adminRemoveBookingAction, addCreditsAction, takeBackCreditAction } from "@/app/admin/actions";
+
+const CREDIT_SOURCE: Record<string, string> = {
+  admin_credit: "Added by you",
+  refund_credit: "From a cancellation",
+  welcome: "Welcome offer",
+};
 import { ConfirmButton } from "@/components/confirm-button";
 
 function Row({ label, value }: { label: string; value: string | null | undefined }) {
@@ -26,7 +32,7 @@ export default async function AdminCustomerDetail({
   const { error: errorMsg, saved } = await searchParams;
   const admin = createAdminClient();
 
-  const [{ data: profile }, { data: userRes }, { data: bookings }] = await Promise.all([
+  const [{ data: profile }, { data: userRes }, { data: bookings }, { data: packs }] = await Promise.all([
     admin
       .from("profiles")
       .select("full_name, phone, waiver_signed_at, health_completed_at, health")
@@ -38,7 +44,16 @@ export default async function AdminCustomerDetail({
       .select("id, status, payment_status, session_id, class_sessions(starts_at, instructor, classes(name))")
       .eq("user_id", id)
       .order("created_at", { ascending: false }),
+    admin
+      .from("class_packs")
+      .select("id, kind, classes_remaining, expires_at")
+      .eq("user_id", id)
+      .gt("classes_remaining", 0)
+      .gt("expires_at", new Date().toISOString())
+      .order("expires_at", { ascending: true }),
   ]);
+  const activePacks = packs ?? [];
+  const totalCredits = activePacks.reduce((sum, p) => sum + p.classes_remaining, 0);
 
   if (!profile) notFound();
 
@@ -82,6 +97,21 @@ export default async function AdminCustomerDetail({
     redirect(`/admin/customers/${id}?saved=Removed%20from%20the%20class.`);
   }
 
+  async function addCredits(formData: FormData) {
+    "use server";
+    const { error } = await addCreditsAction(id, formData);
+    if (error) redirect(`/admin/customers/${id}?error=${encodeURIComponent(error)}`);
+    redirect(`/admin/customers/${id}?saved=Credit%20added.`);
+  }
+
+  async function takeBack(packId: string, formData: FormData) {
+    "use server";
+    void formData;
+    const { error } = await takeBackCreditAction(packId, id);
+    if (error) redirect(`/admin/customers/${id}?error=${encodeURIComponent(error)}`);
+    redirect(`/admin/customers/${id}?saved=Credit%20taken%20back.`);
+  }
+
   return (
     <>
       <div className="admin-card" style={{ marginTop: "2rem" }}>
@@ -112,6 +142,60 @@ export default async function AdminCustomerDetail({
             )}
           </>
         )}
+      </div>
+
+      <div className="admin-card" style={{ marginTop: "1.5rem" }}>
+        <h3>Class credits</h3>
+        <p style={{ marginBottom: "1rem" }}>
+          {totalCredits === 0
+            ? "No credits to use right now."
+            : `${totalCredits} credit${totalCredits === 1 ? "" : "s"} to use — spent automatically when they next book.`}
+        </p>
+        {activePacks.length > 0 && (
+          <div className="admin-table" style={{ marginBottom: "1.2rem" }}>
+            {activePacks.map((p) => (
+              <div
+                className="admin-row"
+                key={p.id}
+                style={{ alignItems: "center", gridTemplateColumns: "1fr 1.2fr 1.2fr auto" }}
+              >
+                <span>
+                  {p.classes_remaining} credit{p.classes_remaining === 1 ? "" : "s"}
+                </span>
+                <span style={{ color: "var(--muted)" }}>{CREDIT_SOURCE[p.kind] ?? "Bundle"}</span>
+                <span style={{ color: "var(--muted)" }}>
+                  expires{" "}
+                  {new Date(p.expires_at).toLocaleDateString("en-GB", {
+                    timeZone: "Europe/London",
+                    day: "numeric",
+                    month: "short",
+                  })}
+                </span>
+                <form action={takeBack.bind(null, p.id)}>
+                  <ConfirmButton className="admin-link-btn" confirmText="Take back 1 credit from this customer?">
+                    Take back 1
+                  </ConfirmButton>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
+        <form action={addCredits} style={{ display: "flex", flexWrap: "wrap", gap: ".8rem", alignItems: "center" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
+            Add
+            <input name="count" type="number" defaultValue={1} min={1} max={20} style={{ width: "4.5rem" }} />
+            credit(s)
+          </label>
+          <label className="admin-check">
+            <input name="notify" type="checkbox" defaultChecked /> Email them to let them know
+          </label>
+          <button type="submit" className="btn btn--primary">
+            Add credits
+          </button>
+        </form>
+        <p style={{ color: "var(--muted)", fontSize: ".85rem", marginTop: ".6rem" }}>
+          New credits last 6 weeks, like a bundle.
+        </p>
       </div>
 
       <div className="admin-card" style={{ marginTop: "1.5rem" }}>
