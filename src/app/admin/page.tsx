@@ -93,7 +93,9 @@ export default async function AdminOverview() {
   // Recent cancellations — same RLS-bypass reasoning as the waitlist above.
   const { data: cancelled } = await admin
     .from("bookings")
-    .select("id, user_id, cancelled_at, payment_status, refunded_at, class_sessions(starts_at, classes(name))")
+    .select(
+      "id, user_id, cancelled_at, payment_status, refunded_at, paid_via_pack_id, stripe_payment_intent_id, class_sessions(starts_at, classes(name))"
+    )
     .eq("status", "cancelled")
     .not("cancelled_at", "is", null)
     .order("cancelled_at", { ascending: false })
@@ -105,9 +107,23 @@ export default async function AdminOverview() {
     cancelled_at: string;
     payment_status: string;
     refunded_at: string | null;
+    paid_via_pack_id: string | null;
+    stripe_payment_intent_id: string | null;
     class_sessions: { starts_at: string; classes: { name: string } | null } | null;
   };
   const cancelRows = ((cancelled ?? []) as unknown as CancelRow[]).filter((c) => c.class_sessions);
+
+  // Card-paid cancellations used to be refunded to the card; they now get a
+  // refund_credit pack instead. Matching on the payment intent tells them apart.
+  const intentIds = cancelRows.map((c) => c.stripe_payment_intent_id).filter((id): id is string => Boolean(id));
+  const { data: creditPacks } = intentIds.length
+    ? await admin
+        .from("class_packs")
+        .select("stripe_payment_intent_id")
+        .eq("kind", "refund_credit")
+        .in("stripe_payment_intent_id", intentIds)
+    : { data: [] };
+  const creditedIntents = new Set((creditPacks ?? []).map((p) => p.stripe_payment_intent_id));
 
   let cancelDisplay: { id: string; who: string; className: string; when: string; cancelledOn: string; outcome: string }[] = [];
   if (cancelRows.length > 0) {
@@ -131,11 +147,17 @@ export default async function AdminOverview() {
       }),
       cancelledOn: new Date(c.cancelled_at).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" }),
       outcome: (() => {
-        if (c.refunded_at) return "refunded";
+        if (c.refunded_at) {
+          if (c.paid_via_pack_id) return "credit returned to account";
+          if (c.stripe_payment_intent_id && creditedIntents.has(c.stripe_payment_intent_id)) {
+            return "credited to account";
+          }
+          return "refunded to card";
+        }
         if (c.payment_status !== "paid") return "no payment taken";
-        const wasWithinRefundWindow =
+        const wasOutside24h =
           +new Date(c.class_sessions!.starts_at) - +new Date(c.cancelled_at) >= 24 * 60 * 60 * 1000;
-        return wasWithinRefundWindow ? "⚠ refund failed — check Stripe" : "not refunded (within 24h)";
+        return wasOutside24h ? "⚠ credit not added — needs sorting manually" : "no credit (within 24h)";
       })(),
     }));
   }
