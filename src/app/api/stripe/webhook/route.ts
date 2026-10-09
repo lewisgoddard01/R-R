@@ -29,6 +29,58 @@ export async function POST(req: NextRequest) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
+    const meta = session.metadata ?? {};
+    if (meta.pricing_item_id && meta.user_id) {
+      // Same retry guard as bundles below.
+      const { data: existingPack } = await admin
+        .from("class_packs")
+        .select("id")
+        .eq("stripe_checkout_session_id", session.id)
+        .maybeSingle();
+
+      if (!existingPack) {
+        const credits = Number(meta.credits) || 0;
+        const validDays = Number(meta.valid_days) || PACK_VALIDITY_DAYS;
+        const paymentIntentId =
+          typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
+        const { error: insertErr } = await admin.from("class_packs").insert({
+          user_id: meta.user_id,
+          kind: "offer",
+          classes_total: credits,
+          classes_remaining: credits,
+          price_paid_pence: session.amount_total ?? 0,
+          stripe_checkout_session_id: session.id,
+          stripe_payment_intent_id: paymentIntentId,
+          expires_at: new Date(Date.now() + validDays * 24 * 60 * 60 * 1000).toISOString(),
+          class_id: meta.class_id || null,
+          pricing_item_id: meta.pricing_item_id,
+        });
+        // Let Stripe retry rather than silently keep a payment with no credits.
+        if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
+
+        let classNote = "";
+        if (meta.class_id) {
+          const { data: cls } = await admin.from("classes").select("name").eq("id", meta.class_id).maybeSingle();
+          if (cls?.name) classNote = ` They can be used on ${cls.name} classes.`;
+        }
+        const { data: userRes } = await admin.auth.admin.getUserById(meta.user_id);
+        const email = userRes?.user?.email;
+        if (email) {
+          await sendEmail({
+            to: email,
+            subject: `Your ${meta.item_name} is ready`,
+            html: `<p>Payment received — you now have <strong>${credits} class credit${credits === 1 ? "" : "s"}</strong> to use within ${validDays} days.${classNote} Just book as normal and a credit will be used automatically instead of taking payment.</p><p><a href="https://reviveandreform.co.uk/book" style="color:#EA7B2B;font-weight:600;">Book a class →</a></p><p>— Revive &amp; Reform</p>`,
+          }).catch(() => {});
+          await sendEmail({
+            to: ADMIN_EMAIL,
+            subject: `New ${meta.item_name} purchased`,
+            html: `<p>${email} just bought ${meta.item_name} (${credits} credit${credits === 1 ? "" : "s"}).</p>`,
+          }).catch(() => {});
+        }
+      }
+      return NextResponse.json({ received: true });
+    }
+
     const bundle = session.metadata?.kind ? findBundle(session.metadata.kind) : undefined;
     if (bundle) {
       const userId = session.metadata!.user_id;

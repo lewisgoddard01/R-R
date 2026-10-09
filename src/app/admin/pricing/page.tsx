@@ -16,13 +16,78 @@ type PricingItem = {
   featured: boolean;
   sort_order: number;
   active: boolean;
+  price_pence: number | null;
+  credits: number | null;
+  valid_days: number;
+  class_id: string | null;
+  one_per_customer: boolean;
 };
+
+type ClassOption = { id: string; name: string };
 
 // Module scope on purpose: inline server actions serialise any variable they
 // close over, and a function can't be serialised.
 function done(error: string | undefined, message: string): never {
   if (error) redirect(`/admin/pricing?error=${encodeURIComponent(error)}`);
   redirect(`/admin/pricing?saved=${encodeURIComponent(message)}`);
+}
+
+function BuyFields({ item, classes }: { item?: PricingItem; classes: ClassOption[] }) {
+  const buyable = Boolean(item?.price_pence && item?.credits);
+  return (
+    <fieldset
+      style={{
+        border: "1px solid var(--line, rgba(255,255,255,.15))",
+        borderRadius: "8px",
+        padding: ".8rem 1rem",
+        width: "100%",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: ".8rem",
+        alignItems: "center",
+      }}
+    >
+      <label className="admin-check" style={{ width: "100%" }}>
+        <input name="buyable" type="checkbox" defaultChecked={buyable} /> <strong>Customers can buy this</strong>
+        <span style={{ color: "var(--muted)", fontSize: ".85rem" }}> — adds a Buy button and gives them class credits</span>
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: ".4rem" }}>
+        Costs £
+        <input
+          name="price"
+          type="number"
+          min={0}
+          step={0.01}
+          defaultValue={item?.price_pence ? item.price_pence / 100 : ""}
+          style={{ width: "6rem" }}
+        />
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: ".4rem" }}>
+        Gives
+        <input name="credits" type="number" min={1} max={50} defaultValue={item?.credits ?? ""} style={{ width: "4.5rem" }} />
+        credits
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: ".4rem" }}>
+        Use within
+        <input name="valid_days" type="number" min={1} max={365} defaultValue={item?.valid_days ?? 42} style={{ width: "4.5rem" }} />
+        days
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: ".4rem" }}>
+        For
+        <select name="class_id" defaultValue={item?.class_id ?? ""}>
+          <option value="">any class</option>
+          {classes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} only
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="admin-check">
+        <input name="one_per_customer" type="checkbox" defaultChecked={item?.one_per_customer ?? false} /> One per customer
+      </label>
+    </fieldset>
+  );
 }
 
 export default async function AdminPricing({
@@ -32,12 +97,18 @@ export default async function AdminPricing({
 }) {
   const { error: errorMsg, saved } = await searchParams;
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("pricing_items")
-    .select("id, name, subtitle, price_label, featured, sort_order, active")
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
+  const [{ data }, { data: classData }] = await Promise.all([
+    supabase
+      .from("pricing_items")
+      .select(
+        "id, name, subtitle, price_label, featured, sort_order, active, price_pence, credits, valid_days, class_id, one_per_customer"
+      )
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true }),
+    supabase.from("classes").select("id, name").order("name", { ascending: true }),
+  ]);
   const items = (data ?? []) as PricingItem[];
+  const classes = (classData ?? []) as ClassOption[];
 
   async function addItem(formData: FormData) {
     "use server";
@@ -68,8 +139,8 @@ export default async function AdminPricing({
       <div className="admin-card" style={{ marginTop: "2rem" }}>
         <h3>Add to the pricing page</h3>
         <p style={{ color: "var(--muted)", marginBottom: "1rem", fontSize: ".9rem" }}>
-          For one-off events, workshops or new prices. The welcome offer and bundles are set separately
-          as they&apos;re linked to card payments.
+          For offers, class blocks, events or new prices. Tick &ldquo;Customers can buy this&rdquo; to give it a
+          Buy button — buyers get class credits, used automatically when they book.
         </p>
         {errorMsg && (
           <p style={{ color: "var(--orange)", marginBottom: "1rem" }}>Couldn&apos;t save: {errorMsg}</p>
@@ -79,11 +150,11 @@ export default async function AdminPricing({
           <div className="admin-form__grid">
             <label>
               Name
-              <input name="name" required placeholder="e.g. Christmas workshop" />
+              <input name="name" required placeholder="e.g. November offer" />
             </label>
             <label>
-              Price
-              <input name="price_label" required placeholder="e.g. £25, Free, POA" />
+              Price shown
+              <input name="price_label" placeholder="e.g. Free, POA (filled in if buyable)" />
             </label>
             <label>
               Position
@@ -95,8 +166,9 @@ export default async function AdminPricing({
           </div>
           <label>
             Small print
-            <input name="subtitle" placeholder="e.g. Saturday 13 December, 10am — 90 minutes" />
+            <input name="subtitle" placeholder="e.g. Six classes, use within six weeks" />
           </label>
+          <BuyFields classes={classes} />
           <button type="submit" className="btn btn--primary">
             Add item
           </button>
@@ -122,7 +194,12 @@ export default async function AdminPricing({
               >
                 <input name="name" defaultValue={item.name} required aria-label="Name" />
                 <input name="subtitle" defaultValue={item.subtitle ?? ""} placeholder="Small print" aria-label="Small print" />
-                <input name="price_label" defaultValue={item.price_label} required style={{ width: "6rem" }} aria-label="Price" />
+                <input
+                  name="price_label"
+                  defaultValue={item.price_label}
+                  style={{ width: "6rem" }}
+                  aria-label="Price shown"
+                />
                 <input
                   name="sort_order"
                   type="number"
@@ -136,6 +213,8 @@ export default async function AdminPricing({
                 <span className={item.active ? "admin-badge admin-badge--on" : "admin-badge"}>
                   {item.active ? "Showing" : "Hidden"}
                 </span>
+                {item.price_pence && item.credits ? <span className="admin-badge admin-badge--on">Buyable</span> : null}
+                <BuyFields item={item} classes={classes} />
                 <button type="submit" className="btn btn--ghost">
                   Save
                 </button>

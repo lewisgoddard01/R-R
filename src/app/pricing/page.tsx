@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Rule, Leaf } from "@/components/rule";
-import { createBundleCheckoutAction } from "@/app/book/actions";
+import { createBundleCheckoutAction, createItemCheckoutAction } from "@/app/book/actions";
 import { WELCOME_PACK, BUNDLES, bundleSavingsPence } from "@/lib/packs";
 import { createClient } from "@/lib/supabase/server";
 import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
@@ -36,7 +36,7 @@ export default async function Pricing({
 
   const { data: priceRows } = await supabase
     .from("pricing_items")
-    .select("id, name, subtitle, price_label, featured")
+    .select("id, name, subtitle, price_label, featured, price_pence, credits, one_per_customer")
     .eq("active", true)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
@@ -46,7 +46,25 @@ export default async function Pricing({
     subtitle: string | null;
     price_label: string;
     featured: boolean;
+    price_pence: number | null;
+    credits: number | null;
+    one_per_customer: boolean;
   }[];
+
+  const alreadyBought = new Set<string>();
+  if (user) {
+    const { data: bought } = await supabase
+      .from("class_packs")
+      .select("pricing_item_id")
+      .eq("user_id", user.id)
+      .not("pricing_item_id", "is", null);
+    (bought ?? []).forEach((b) => alreadyBought.add(b.pricing_item_id as string));
+  }
+
+  async function buyItem(itemId: string) {
+    "use server";
+    await createItemCheckoutAction(itemId);
+  }
 
   async function buyWelcome() {
     "use server";
@@ -105,15 +123,29 @@ export default async function Pricing({
 
         {priceItems.length > 0 && (
           <div className="prices" data-reveal>
-            {priceItems.map((item) => (
-              <div className="price-row" key={item.id}>
-                <span className="price-row__name">
-                  {item.featured ? <Leaf label={item.name} /> : item.name}
-                  {item.subtitle && <small>{item.subtitle}</small>}
-                </span>
-                <span className="price-row__amt">{item.price_label}</span>
-              </div>
-            ))}
+            {priceItems.map((item) => {
+              const buyable = Boolean(item.price_pence && item.credits);
+              const boughtOnce = item.one_per_customer && alreadyBought.has(item.id);
+              return (
+                <div className="price-row" key={item.id}>
+                  <span className="price-row__name">
+                    {item.featured ? <Leaf label={item.name} /> : item.name}
+                    {item.subtitle && <small>{item.subtitle}</small>}
+                    {buyable && open && !boughtOnce && (
+                      <form action={buyItem.bind(null, item.id)} style={{ marginTop: ".7rem" }}>
+                        <button type="submit" className="btn btn--ghost">
+                          Buy {item.name} <span className="btn__x">→</span>
+                        </button>
+                      </form>
+                    )}
+                    {buyable && boughtOnce && (
+                      <small style={{ color: "var(--muted)" }}>You&apos;ve already bought this — it&apos;s one per customer.</small>
+                    )}
+                  </span>
+                  <span className="price-row__amt">{item.price_label}</span>
+                </div>
+              );
+            })}
           </div>
         )}
         <p style={{ marginTop: ".8rem", fontSize: ".9rem" }} data-reveal>

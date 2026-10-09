@@ -76,6 +76,8 @@ export default async function Book({
 
   let waiverDone = false;
   let hasCredit = false;
+  let hasGeneralCredit = false;
+  const creditClassIds = new Set<string>();
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -87,14 +89,18 @@ export default async function Book({
     // Booking already spends a credit automatically before charging a card
     // (see settlePaymentAndRedirect) — this just changes the button label so
     // customers with a credit don't think they're about to be charged again.
-    const { count } = await supabase
+    const { data: packs } = await supabase
       .from("class_packs")
-      .select("id", { count: "exact", head: true })
+      .select("class_id")
       .eq("user_id", user.id)
       .gt("classes_remaining", 0)
       .gt("expires_at", new Date().toISOString());
-    hasCredit = Boolean(count && count > 0);
+    hasCredit = (packs ?? []).length > 0;
+    hasGeneralCredit = (packs ?? []).some((p) => !p.class_id);
+    (packs ?? []).forEach((p) => p.class_id && creditClassIds.add(p.class_id));
   }
+  const creditCovers = (classId: string | undefined) =>
+    hasGeneralCredit || (classId !== undefined && creditClassIds.has(classId));
 
   const now = new Date();
   const horizon = bookingHorizon(now); // customers can book up to a month ahead
@@ -198,7 +204,9 @@ export default async function Book({
       if (canAct && !pastCutoff) {
         if (spacesLeft > 0) {
           actionKind = "pay";
-          actionLabel = hasCredit ? "Book — use 1 credit" : `Book — £${((s.classes?.price_pence ?? 0) / 100).toFixed(2)}`;
+          actionLabel = creditCovers(s.classes?.id)
+            ? "Book — use 1 credit"
+            : `Book — £${((s.classes?.price_pence ?? 0) / 100).toFixed(2)}`;
         } else {
           actionKind = "waitlist";
           actionLabel = "Join the waitlist";

@@ -170,13 +170,33 @@ export async function creditCancelledBookingAction(bookingId: string) {
 
 // ── Pricing page items ───────────────────────────────────────────────
 function pricingFields(formData: FormData) {
+  const buyable = formData.get("buyable") === "on";
+  const pricePounds = num(formData.get("price"), 0);
+  const credits = Math.round(num(formData.get("credits"), 0));
+  // A buyable item always shows exactly what it charges.
+  const chargedLabel =
+    buyable && pricePounds > 0 ? `£${Number.isInteger(pricePounds) ? pricePounds : pricePounds.toFixed(2)}` : null;
   return {
     name: str(formData.get("name")),
     subtitle: str(formData.get("subtitle")) || null,
-    price_label: str(formData.get("price_label")),
+    price_label: chargedLabel ?? str(formData.get("price_label")),
     featured: formData.get("featured") === "on",
     sort_order: num(formData.get("sort_order"), 0),
+    price_pence: buyable && pricePounds > 0 ? Math.round(pricePounds * 100) : null,
+    credits: buyable && credits > 0 ? credits : null,
+    valid_days: Math.max(1, Math.round(num(formData.get("valid_days"), 42))),
+    class_id: str(formData.get("class_id")) || null,
+    one_per_customer: formData.get("one_per_customer") === "on",
   };
+}
+
+function checkBuyable(fields: ReturnType<typeof pricingFields>, formData: FormData) {
+  if (formData.get("buyable") !== "on") {
+    return fields.price_label ? undefined : "Enter the price to show, e.g. £25, Free or POA.";
+  }
+  if (!fields.price_pence) return "To make it buyable, enter what it costs in £.";
+  if (!fields.credits) return "To make it buyable, enter how many class credits it gives.";
+  return undefined;
 }
 
 function revalidatePricing() {
@@ -186,14 +206,20 @@ function revalidatePricing() {
 
 export async function createPricingItemAction(formData: FormData) {
   const supabase = await requireAdmin();
-  const { error } = await supabase.from("pricing_items").insert({ ...pricingFields(formData), active: true });
+  const fields = pricingFields(formData);
+  const invalid = checkBuyable(fields, formData);
+  if (invalid) return { error: invalid };
+  const { error } = await supabase.from("pricing_items").insert({ ...fields, active: true });
   revalidatePricing();
   return { error: error?.message };
 }
 
 export async function updatePricingItemAction(itemId: string, formData: FormData) {
   const supabase = await requireAdmin();
-  const { error } = await supabase.from("pricing_items").update(pricingFields(formData)).eq("id", itemId);
+  const fields = pricingFields(formData);
+  const invalid = checkBuyable(fields, formData);
+  if (invalid) return { error: invalid };
+  const { error } = await supabase.from("pricing_items").update(fields).eq("id", itemId);
   revalidatePricing();
   return { error: error?.message };
 }

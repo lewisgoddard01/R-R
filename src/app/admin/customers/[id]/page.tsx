@@ -8,6 +8,7 @@ const CREDIT_SOURCE: Record<string, string> = {
   admin_credit: "Added by you",
   refund_credit: "From a cancellation",
   welcome: "Welcome offer",
+  offer: "Bought from pricing page",
 };
 import { ConfirmButton } from "@/components/confirm-button";
 
@@ -46,7 +47,7 @@ export default async function AdminCustomerDetail({
       .order("created_at", { ascending: false }),
     admin
       .from("class_packs")
-      .select("id, kind, classes_remaining, expires_at")
+      .select("id, kind, classes_remaining, expires_at, classes(name)")
       .eq("user_id", id)
       .gt("classes_remaining", 0)
       .gt("expires_at", new Date().toISOString())
@@ -162,7 +163,11 @@ export default async function AdminCustomerDetail({
                 <span>
                   {p.classes_remaining} credit{p.classes_remaining === 1 ? "" : "s"}
                 </span>
-                <span style={{ color: "var(--muted)" }}>{CREDIT_SOURCE[p.kind] ?? "Bundle"}</span>
+                <span style={{ color: "var(--muted)" }}>
+                  {CREDIT_SOURCE[p.kind] ?? "Bundle"}
+                  {(p.classes as unknown as { name: string } | null)?.name &&
+                    ` · ${(p.classes as unknown as { name: string }).name} only`}
+                </span>
                 <span style={{ color: "var(--muted)" }}>
                   expires{" "}
                   {new Date(p.expires_at).toLocaleDateString("en-GB", {

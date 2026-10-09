@@ -85,7 +85,14 @@ async function settlePaymentAndRedirect(params: {
 }): Promise<never> {
   const { supabase, userEmail, bookingId, sessionId, session, cls } = params;
 
-  const { data: packId } = await supabase.rpc("consume_class_credit");
+  const { data: sessionClass } = await supabase
+    .from("class_sessions")
+    .select("class_id")
+    .eq("id", sessionId)
+    .maybeSingle();
+  const { data: packId } = await supabase.rpc("consume_class_credit", {
+    p_class_id: sessionClass?.class_id ?? null,
+  });
   if (packId) {
     // Customers can't write payment_status/paid_via_pack_id directly (see
     // schema_v8_security_hardening.sql) — this is legitimate server-side
@@ -246,6 +253,72 @@ export async function claimWaitlistSpotAction(bookingId: string) {
 // once payment completes. The welcome offer is enforced as one-time-per-
 // customer here — if they've already got one on record, we refuse and
 // explain rather than letting them buy a second discounted intro pack.
+// Buys a pricing page item the studio set up from admin. What's paid for
+// (credits, validity, class) is fixed into the Stripe metadata now, so a later
+// edit to the item can't change what this customer receives.
+export async function createItemCheckoutAction(itemId: string) {
+  if (!bookingsAreOpen()) {
+    redirect(`/pricing?error=${encodeURIComponent(`Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!`)}`);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login?next=/pricing");
+
+  const { data: item } = await supabase
+    .from("pricing_items")
+    .select("id, name, price_pence, credits, valid_days, class_id, one_per_customer, active")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (!item || !item.active || !item.price_pence || !item.credits) {
+    redirect(`/pricing?error=${encodeURIComponent("Sorry, that's not available to buy right now.")}`);
+  }
+
+  if (item.one_per_customer) {
+    const { data: already } = await supabase
+      .from("class_packs")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("pricing_item_id", item.id)
+      .limit(1)
+      .maybeSingle();
+    if (already) {
+      redirect(`/pricing?error=${encodeURIComponent(`You've already bought ${item.name} — it's one per customer.`)}`);
+    }
+  }
+
+  const origin = (await headers()).get("origin") ?? "https://reviveandreform.co.uk";
+
+  const checkoutSession = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: "gbp",
+          product_data: { name: item.name },
+          unit_amount: item.price_pence,
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: `${origin}/account?packPurchased=1`,
+    cancel_url: `${origin}/pricing?packCancelled=1`,
+    customer_email: user.email ?? undefined,
+    metadata: {
+      pricing_item_id: item.id,
+      item_name: item.name,
+      user_id: user.id,
+      credits: String(item.credits),
+      valid_days: String(item.valid_days),
+      class_id: item.class_id ?? "",
+    },
+  });
+
+  redirect(checkoutSession.url!);
+}
+
 export async function createBundleCheckoutAction(kind: string) {
   if (!bookingsAreOpen()) {
     redirect(`/pricing?error=${encodeURIComponent(`Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!`)}`);

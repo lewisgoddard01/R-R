@@ -26,7 +26,7 @@ export default async function Account({
 
   const { data: packs } = await supabase
     .from("class_packs")
-    .select("classes_remaining, expires_at")
+    .select("classes_remaining, expires_at, classes(name)")
     .eq("user_id", user.id)
     .gt("classes_remaining", 0)
     .gt("expires_at", new Date().toISOString())
@@ -34,6 +34,10 @@ export default async function Account({
 
   const totalCredits = (packs ?? []).reduce((sum, p) => sum + p.classes_remaining, 0);
   const nextExpiry = packs?.[0]?.expires_at;
+  const onlyFor = (p: { classes: unknown }) => {
+    const name = (p.classes as { name: string } | null)?.name;
+    return name ? ` · ${name} only` : "";
+  };
 
   const firstName = (profile?.full_name || user.email || "").split(" ")[0];
   const waiverDone = Boolean(profile?.waiver_signed_at && profile?.health_completed_at && profile?.phone);
@@ -53,7 +57,7 @@ export default async function Account({
 
         {packPurchased === "1" && (
           <div className="note-card" style={{ marginTop: "1.5rem" }}>
-            <p>Payment received — your class bundle is ready to use.</p>
+            <p>Payment received — your class credits are ready to use.</p>
           </div>
         )}
 
@@ -85,6 +89,7 @@ export default async function Account({
                   {totalCredits} class{totalCredits === 1 ? "" : "es"} left
                   {nextExpiry &&
                     ` · expires ${new Date(nextExpiry).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "long" })}`}
+                  {packs?.[0] && onlyFor(packs[0])}
                 </span>
               </div>
             )}
@@ -104,6 +109,7 @@ export default async function Account({
                         day: "numeric",
                         month: "long",
                       })}
+                      {onlyFor(p)}
                     </span>
                   ))}
                 </span>
