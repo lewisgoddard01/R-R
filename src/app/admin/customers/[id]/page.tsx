@@ -53,7 +53,7 @@ export default async function AdminCustomerDetail({
       .order("created_at", { ascending: false }),
     admin
       .from("class_packs")
-      .select("id, kind, classes_remaining, expires_at, classes(name)")
+      .select("id, kind, classes_remaining, expires_at, classes(name), pricing_items(name)")
       .eq("user_id", id)
       .gt("classes_remaining", 0)
       .gt("expires_at", new Date().toISOString())
@@ -212,7 +212,7 @@ export default async function AdminCustomerDetail({
                   {p.classes_remaining} credit{p.classes_remaining === 1 ? "" : "s"}
                 </span>
                 <span style={{ color: "var(--muted)" }}>
-                  {CREDIT_SOURCE[p.kind] ?? "Bundle"}
+                  {(p.pricing_items as unknown as { name: string } | null)?.name ?? CREDIT_SOURCE[p.kind] ?? "Bundle"}
                   {(p.classes as unknown as { name: string } | null)?.name &&
                     ` · ${(p.classes as unknown as { name: string }).name} only`}
                 </span>

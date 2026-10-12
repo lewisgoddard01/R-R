@@ -8,7 +8,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
 import { notifyWaitlistOfOpening } from "@/lib/waitlist";
 import { sendBookingConfirmationEmail, sendCancellationEmails } from "@/lib/booking-email";
-import { findBundle, getHiddenBundleKinds, WELCOME_PACK, PACK_VALIDITY_DAYS } from "@/lib/packs";
+import { PACK_VALIDITY_DAYS } from "@/lib/packs";
+import { isOnSale } from "@/lib/offers";
 import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
 
 // This is the "Join the waitlist" button — only ever shown when a class
@@ -248,14 +249,9 @@ export async function claimWaitlistSpotAction(bookingId: string) {
   });
 }
 
-// Buys a class-credit bundle (or the one-time welcome offer): flat Stripe
-// Checkout, not tied to any session. The webhook creates the class_packs row
-// once payment completes. The welcome offer is enforced as one-time-per-
-// customer here — if they've already got one on record, we refuse and
-// explain rather than letting them buy a second discounted intro pack.
-// Buys a pricing page item the studio set up from admin. What's paid for
-// (credits, validity, class) is fixed into the Stripe metadata now, so a later
-// edit to the item can't change what this customer receives.
+// Buys an offer set up in Admin → Pricing (welcome offer, bundle or deal).
+// What's paid for (credits, validity, class) is fixed into the Stripe metadata
+// now, so a later edit to the offer can't change what this customer receives.
 export async function createItemCheckoutAction(itemId: string) {
   if (!bookingsAreOpen()) {
     redirect(`/pricing?error=${encodeURIComponent(`Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!`)}`);
@@ -269,10 +265,10 @@ export async function createItemCheckoutAction(itemId: string) {
 
   const { data: item } = await supabase
     .from("pricing_items")
-    .select("id, name, price_pence, credits, valid_days, class_id, one_per_customer, active")
+    .select("id, name, price_pence, credits, valid_days, class_id, one_per_customer, active, starts_at, ends_at")
     .eq("id", itemId)
     .maybeSingle();
-  if (!item || !item.active || !item.price_pence || !item.credits) {
+  if (!item || !isOnSale(item) || !item.price_pence || !item.credits) {
     redirect(`/pricing?error=${encodeURIComponent("Sorry, that's not available to buy right now.")}`);
   }
 
@@ -314,58 +310,6 @@ export async function createItemCheckoutAction(itemId: string) {
       valid_days: String(item.valid_days),
       class_id: item.class_id ?? "",
     },
-  });
-
-  redirect(checkoutSession.url!);
-}
-
-export async function createBundleCheckoutAction(kind: string) {
-  if (!bookingsAreOpen()) {
-    redirect(`/pricing?error=${encodeURIComponent(`Bookings open on ${BOOKINGS_OPEN_AT_LABEL} — check back soon!`)}`);
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/pricing");
-
-  const bundle = findBundle(kind);
-  if (!bundle) redirect("/pricing?error=Unknown%20bundle");
-  if ((await getHiddenBundleKinds(supabase)).has(bundle.kind)) {
-    redirect(`/pricing?error=${encodeURIComponent("Sorry, that's not available to buy right now.")}`);
-  }
-
-  if (bundle.kind === WELCOME_PACK.kind) {
-    const { data: existingWelcome } = await supabase
-      .from("class_packs")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("kind", WELCOME_PACK.kind)
-      .maybeSingle();
-    if (existingWelcome) {
-      redirect(`/pricing?error=${encodeURIComponent("You've already used the welcome offer — it's one-time only.")}`);
-    }
-  }
-
-  const origin = (await headers()).get("origin") ?? "https://reviveandreform.co.uk";
-
-  const checkoutSession = await stripe.checkout.sessions.create({
-    mode: "payment",
-    line_items: [
-      {
-        price_data: {
-          currency: "gbp",
-          product_data: { name: bundle.label },
-          unit_amount: bundle.pricePence,
-        },
-        quantity: 1,
-      },
-    ],
-    success_url: `${origin}/account?packPurchased=1`,
-    cancel_url: `${origin}/pricing?packCancelled=1`,
-    customer_email: user.email ?? undefined,
-    metadata: { kind: bundle.kind, user_id: user.id },
   });
 
   redirect(checkoutSession.url!);

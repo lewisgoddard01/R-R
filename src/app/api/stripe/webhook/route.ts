@@ -101,9 +101,15 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (!existingPack) {
+          const { data: offer } = await admin
+            .from("pricing_items")
+            .select("id")
+            .eq("legacy_kind", bundle.kind)
+            .maybeSingle();
           await admin.from("class_packs").insert({
             user_id: userId,
             kind: bundle.kind,
+            pricing_item_id: offer?.id ?? null,
             classes_total: bundle.classes,
             classes_remaining: bundle.classes,
             price_paid_pence: session.amount_total ?? 0,

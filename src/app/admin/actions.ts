@@ -8,6 +8,7 @@ import { sendSessionCancelledEmail, sendBookingConfirmationEmail } from "@/lib/b
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { ukWallTimeToUTC } from "@/lib/uk-time";
 import { PACK_VALIDITY_DAYS } from "@/lib/packs";
+import { OFFER_SECTIONS } from "@/lib/offers";
 import { notifyWaitlistOfOpening } from "@/lib/waitlist";
 
 async function requireAdmin() {
@@ -198,6 +199,9 @@ function pricingFields(formData: FormData) {
   // A buyable item always shows exactly what it charges.
   const chargedLabel =
     buyable && pricePounds > 0 ? `£${Number.isInteger(pricePounds) ? pricePounds : pricePounds.toFixed(2)}` : null;
+  const section = str(formData.get("section"));
+  const startDate = str(formData.get("starts_on"));
+  const endDate = str(formData.get("ends_on"));
   return {
     name: str(formData.get("name")),
     subtitle: str(formData.get("subtitle")) || null,
@@ -209,6 +213,10 @@ function pricingFields(formData: FormData) {
     valid_days: Math.max(1, Math.round(num(formData.get("valid_days"), 42))),
     class_id: str(formData.get("class_id")) || null,
     one_per_customer: formData.get("one_per_customer") === "on",
+    section: section in OFFER_SECTIONS ? section : "list",
+    // Whole UK days: on sale from the start of the first day to the end of the last.
+    starts_at: startDate ? ukWallTimeToUTC(startDate, "00:00").toISOString() : null,
+    ends_at: endDate ? ukWallTimeToUTC(endDate, "23:59").toISOString() : null,
   };
 }
 
@@ -218,12 +226,16 @@ function checkBuyable(fields: ReturnType<typeof pricingFields>, formData: FormDa
   if (hasPrice && !hasCredits) return "To sell it online, also enter how many class credits it gives.";
   if (hasCredits && !hasPrice) return "To sell it online, also enter what it costs in £.";
   if (!fields.price_label) return "Enter the price to show, e.g. £25, Free or POA.";
+  if (fields.starts_at && fields.ends_at && fields.ends_at < fields.starts_at) {
+    return "The end date is before the start date.";
+  }
   return undefined;
 }
 
 function revalidatePricing() {
   revalidatePath("/pricing");
   revalidatePath("/admin/pricing");
+  revalidatePath("/book");
 }
 
 export async function createPricingItemAction(formData: FormData) {
@@ -253,13 +265,22 @@ export async function setPricingItemActiveAction(itemId: string, active: boolean
   return { error: error?.message };
 }
 
-export async function setBundleVisibleAction(kind: string, active: boolean) {
+// Copies an offer as a hidden draft, e.g. to turn October's deal into
+// November's without retyping it.
+export async function duplicatePricingItemAction(itemId: string) {
   const supabase = await requireAdmin();
+  const { data: item, error: readErr } = await supabase
+    .from("pricing_items")
+    .select(
+      "name, subtitle, price_label, featured, sort_order, price_pence, credits, valid_days, class_id, one_per_customer, section"
+    )
+    .eq("id", itemId)
+    .maybeSingle();
+  if (readErr || !item) return { error: readErr?.message ?? "Offer not found." };
   const { error } = await supabase
-    .from("bundle_settings")
-    .upsert({ kind, active, updated_at: new Date().toISOString() });
+    .from("pricing_items")
+    .insert({ ...item, name: `${item.name} (copy)`, sort_order: item.sort_order + 1, active: false });
   revalidatePricing();
-  revalidatePath("/book");
   return { error: error?.message };
 }
 
