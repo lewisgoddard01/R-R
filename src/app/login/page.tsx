@@ -19,11 +19,30 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
+
+  async function resendConfirmation() {
+    setBusy(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/account` },
+    });
+    setMsg(
+      error
+        ? `Couldn't resend just now (${error.message}). Please try again in a few minutes.`
+        : `We've sent a new confirmation email to ${email}. Click the link in it, then log in. Check your junk or spam folder if it isn't in your inbox.`
+    );
+    setNeedsConfirm(false);
+    setBusy(false);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
+    setNeedsConfirm(false);
 
     if (mode === "forgot") {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -50,8 +69,21 @@ export default function LoginPage() {
         setBusy(false);
         return;
       }
+      // An email that's already registered comes back as a "user" with no
+      // identities (so sign-up can't be used to check who has an account).
+      // Telling them to check their email would leave them stuck.
+      if (data.user && data.user.identities?.length === 0) {
+        setMsg(
+          "There's already an account with this email. Log in with your password, or use “Forgot your password?” to set a new one."
+        );
+        setMode("login");
+        setBusy(false);
+        return;
+      }
       if (!data.session) {
-        setMsg("Almost there — check your email to confirm your account, then log in.");
+        setMsg(
+          `Almost there — we've emailed a confirmation link to ${email}. Click it, then log in. Check your junk or spam folder if it isn't in your inbox.`
+        );
         setMode("login");
         setBusy(false);
         return;
@@ -63,7 +95,18 @@ export default function LoginPage() {
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      setMsg(error.message);
+      if (error.code === "email_not_confirmed") {
+        setMsg(
+          "You haven't confirmed your email yet — click the link in the email we sent when you signed up (check junk/spam too)."
+        );
+        setNeedsConfirm(true);
+      } else if (error.code === "invalid_credentials") {
+        setMsg(
+          "That email and password don't match. Check for typos (tap “Show” to see your password), or use “Forgot your password?” below to set a new one."
+        );
+      } else {
+        setMsg(error.message);
+      }
       setBusy(false);
       return;
     }
@@ -99,7 +142,25 @@ export default function LoginPage() {
           {mode !== "forgot" && (
             <div className="field">
               <label htmlFor="password">Password</label>
-              <input id="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                style={{ background: "none", border: 0, color: "var(--orange)", padding: ".3rem 0", cursor: "pointer", fontSize: ".85rem" }}
+              >
+                {showPassword ? "Hide password" : "Show password"}
+              </button>
             </div>
           )}
 
@@ -112,6 +173,11 @@ export default function LoginPage() {
           )}
 
           {msg && <p className="auth__msg">{msg}</p>}
+          {needsConfirm && (
+            <button type="button" className="btn btn--ghost btn--full" disabled={busy} onClick={resendConfirmation}>
+              Resend confirmation email
+            </button>
+          )}
 
           <button type="submit" className="btn btn--primary btn--full" disabled={busy}>
             {busy ? "Please wait…" : mode === "login" ? "Log in" : mode === "signup" ? "Create account" : "Send reset link"}

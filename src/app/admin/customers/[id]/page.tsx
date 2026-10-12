@@ -2,7 +2,14 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { conditionLabel, type HealthAnswers } from "@/lib/health-questionnaire";
-import { adminRemoveBookingAction, addCreditsAction, takeBackCreditAction } from "@/app/admin/actions";
+import {
+  adminRemoveBookingAction,
+  addCreditsAction,
+  takeBackCreditAction,
+  confirmCustomerEmailAction,
+  sendPasswordResetAction,
+} from "@/app/admin/actions";
+import { ConfirmButton } from "@/components/confirm-button";
 
 const CREDIT_SOURCE: Record<string, string> = {
   admin_credit: "Added by you",
@@ -10,7 +17,6 @@ const CREDIT_SOURCE: Record<string, string> = {
   welcome: "Welcome offer",
   offer: "Bought from pricing page",
 };
-import { ConfirmButton } from "@/components/confirm-button";
 
 function Row({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
@@ -98,6 +104,20 @@ export default async function AdminCustomerDetail({
     redirect(`/admin/customers/${id}?saved=Removed%20from%20the%20class.`);
   }
 
+  async function confirmEmail() {
+    "use server";
+    const { error } = await confirmCustomerEmailAction(id);
+    if (error) redirect(`/admin/customers/${id}?error=${encodeURIComponent(error)}`);
+    redirect(`/admin/customers/${id}?saved=${encodeURIComponent("Email confirmed — they can log in now.")}`);
+  }
+
+  async function sendReset() {
+    "use server";
+    const { error } = await sendPasswordResetAction(id);
+    if (error) redirect(`/admin/customers/${id}?error=${encodeURIComponent(error)}`);
+    redirect(`/admin/customers/${id}?saved=${encodeURIComponent("Password reset email sent.")}`);
+  }
+
   async function addCredits(formData: FormData) {
     "use server";
     const { error } = await addCreditsAction(id, formData);
@@ -123,6 +143,34 @@ export default async function AdminCustomerDetail({
           {userRes?.user?.email}
           {profile.phone && ` · ${profile.phone}`}
         </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: ".8rem", alignItems: "center", marginBottom: "1rem" }}>
+          {userRes?.user?.email_confirmed_at ? (
+            <span style={{ color: "var(--muted)", fontSize: ".9rem" }}>
+              {userRes.user.last_sign_in_at
+                ? `Last logged in ${new Date(userRes.user.last_sign_in_at).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" })}`
+                : "Email confirmed · hasn't logged in yet"}
+            </span>
+          ) : (
+            <>
+              <span style={{ color: "var(--orange)", fontSize: ".9rem" }}>
+                ⚠ Never confirmed their email, so they can&apos;t log in
+              </span>
+              <form action={confirmEmail}>
+                <ConfirmButton
+                  className="admin-link-btn"
+                  confirmText="Confirm this customer's email for them? Only do this if you're sure the email address is theirs."
+                >
+                  Confirm their email
+                </ConfirmButton>
+              </form>
+            </>
+          )}
+          <form action={sendReset}>
+            <button type="submit" className="admin-link-btn">
+              Email them a password reset link
+            </button>
+          </form>
+        </div>
         {!waiverDone ? (
           <p className="admin-empty">Hasn&apos;t completed the health &amp; waiver form yet.</p>
         ) : (

@@ -66,6 +66,26 @@ export async function updateClassAction(classId: string, formData: FormData) {
   return { error: error?.message };
 }
 
+// ── Customer login help ──────────────────────────────────────────────
+export async function confirmCustomerEmailAction(userId: string) {
+  await requireAdmin();
+  const { error } = await createAdminClient().auth.admin.updateUserById(userId, { email_confirm: true });
+  revalidatePath(`/admin/customers/${userId}`);
+  return { error: error?.message };
+}
+
+export async function sendPasswordResetAction(userId: string) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const { data: userRes } = await admin.auth.admin.getUserById(userId);
+  const email = userRes?.user?.email;
+  if (!email) return { error: "No email address on file for this customer." };
+  const { error } = await admin.auth.resetPasswordForEmail(email, {
+    redirectTo: "https://reviveandreform.co.uk/reset-password",
+  });
+  return { error: error?.message };
+}
+
 // ── Class credits ────────────────────────────────────────────────────
 export async function addCreditsAction(userId: string, formData: FormData) {
   await requireAdmin();
