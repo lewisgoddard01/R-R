@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 // Customers can use their bundle credits for any class within 6 weeks of
 // purchase; unused credits after that expire and are not refunded.
 export const PACK_VALIDITY_DAYS = 42;
@@ -19,6 +21,13 @@ export const BUNDLES = [
 
 export type BundleKind = typeof WELCOME_PACK.kind | (typeof BUNDLES)[number]["kind"];
 
+// Kinds the studio has switched off in admin. If the settings can't be read,
+// nothing is hidden.
+export async function getHiddenBundleKinds(supabase: SupabaseClient) {
+  const { data } = await supabase.from("bundle_settings").select("kind, active");
+  return new Set(((data ?? []) as { kind: string; active: boolean }[]).filter((r) => !r.active).map((r) => r.kind));
+}
+
 export function findBundle(kind: string) {
   if (kind === WELCOME_PACK.kind) return WELCOME_PACK;
   return BUNDLES.find((b) => b.kind === kind);
@@ -31,9 +40,3 @@ export const INDIVIDUAL_CLASS_PRICE_PENCE = 2000;
 export function bundleSavingsPence(b: { classes: number; pricePence: number }) {
   return Math.max(0, INDIVIDUAL_CLASS_PRICE_PENCE * b.classes - b.pricePence);
 }
-
-// The best available per-class rate across all bundles — used to give
-// one-off bookers a concrete number to compare their £20 against.
-export const BEST_BUNDLE = BUNDLES.reduce((best, b) =>
-  b.pricePence / b.classes < best.pricePence / best.classes ? b : best
-);

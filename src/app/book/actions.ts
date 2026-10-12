@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
 import { notifyWaitlistOfOpening } from "@/lib/waitlist";
 import { sendBookingConfirmationEmail, sendCancellationEmails } from "@/lib/booking-email";
-import { findBundle, WELCOME_PACK, PACK_VALIDITY_DAYS } from "@/lib/packs";
+import { findBundle, getHiddenBundleKinds, WELCOME_PACK, PACK_VALIDITY_DAYS } from "@/lib/packs";
 import { bookingsAreOpen, BOOKINGS_OPEN_AT_LABEL } from "@/lib/booking-window";
 
 // This is the "Join the waitlist" button — only ever shown when a class
@@ -332,6 +332,9 @@ export async function createBundleCheckoutAction(kind: string) {
 
   const bundle = findBundle(kind);
   if (!bundle) redirect("/pricing?error=Unknown%20bundle");
+  if ((await getHiddenBundleKinds(supabase)).has(bundle.kind)) {
+    redirect(`/pricing?error=${encodeURIComponent("Sorry, that's not available to buy right now.")}`);
+  }
 
   if (bundle.kind === WELCOME_PACK.kind) {
     const { data: existingWelcome } = await supabase

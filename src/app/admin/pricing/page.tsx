@@ -5,8 +5,21 @@ import {
   updatePricingItemAction,
   setPricingItemActiveAction,
   deletePricingItemAction,
+  setBundleVisibleAction,
 } from "@/app/admin/actions";
 import { ConfirmButton } from "@/components/confirm-button";
+import { BUNDLES, WELCOME_PACK, getHiddenBundleKinds } from "@/lib/packs";
+
+const BUNDLE_ROWS = [
+  { kind: WELCOME_PACK.kind, label: "Welcome offer — 2 classes", price: WELCOME_PACK.pricePence },
+  ...BUNDLES.map((b) => ({ kind: b.kind, label: `Bundle — ${b.label}`, price: b.pricePence })),
+];
+
+async function toggleBundle(kind: string, active: boolean) {
+  "use server";
+  const { error } = await setBundleVisibleAction(kind, active);
+  done(error, active ? "Now showing on the pricing page." : "Hidden from the pricing page.");
+}
 
 type PricingItem = {
   id: string;
@@ -33,7 +46,6 @@ function done(error: string | undefined, message: string): never {
 }
 
 function BuyFields({ item, classes }: { item?: PricingItem; classes: ClassOption[] }) {
-  const buyable = Boolean(item?.price_pence && item?.credits);
   return (
     <fieldset
       style={{
@@ -47,10 +59,13 @@ function BuyFields({ item, classes }: { item?: PricingItem; classes: ClassOption
         alignItems: "center",
       }}
     >
-      <label className="admin-check" style={{ width: "100%" }}>
-        <input name="buyable" type="checkbox" defaultChecked={buyable} /> <strong>Customers can buy this</strong>
-        <span style={{ color: "var(--muted)", fontSize: ".85rem" }}> — adds a Buy button and gives them class credits</span>
-      </label>
+      <p style={{ width: "100%", margin: 0 }}>
+        <strong>Sell it online</strong>
+        <span style={{ color: "var(--muted)", fontSize: ".85rem" }}>
+          {" "}
+          — fill in the price and credits and a Buy button appears. Leave them blank for display only.
+        </span>
+      </p>
       <label style={{ display: "flex", alignItems: "center", gap: ".4rem" }}>
         Costs £
         <input
@@ -109,6 +124,7 @@ export default async function AdminPricing({
   ]);
   const items = (data ?? []) as PricingItem[];
   const classes = (classData ?? []) as ClassOption[];
+  const hiddenBundles = await getHiddenBundleKinds(supabase);
 
   async function addItem(formData: FormData) {
     "use server";
@@ -139,8 +155,8 @@ export default async function AdminPricing({
       <div className="admin-card" style={{ marginTop: "2rem" }}>
         <h3>Add to the pricing page</h3>
         <p style={{ color: "var(--muted)", marginBottom: "1rem", fontSize: ".9rem" }}>
-          For offers, class blocks, events or new prices. Tick &ldquo;Customers can buy this&rdquo; to give it a
-          Buy button — buyers get class credits, used automatically when they book.
+          For offers, class blocks, events or new prices. Give it a price and a number of credits and
+          customers can buy it — the credits are used automatically when they book.
         </p>
         {errorMsg && (
           <p style={{ color: "var(--orange)", marginBottom: "1rem" }}>Couldn&apos;t save: {errorMsg}</p>
@@ -154,7 +170,7 @@ export default async function AdminPricing({
             </label>
             <label>
               Price shown
-              <input name="price_label" placeholder="e.g. Free, POA (filled in if buyable)" />
+              <input name="price_label" placeholder="e.g. Free, POA — set for you if sold online" />
             </label>
             <label>
               Position
@@ -173,6 +189,36 @@ export default async function AdminPricing({
             Add item
           </button>
         </form>
+      </div>
+
+      <div className="admin-card" style={{ marginTop: "1.5rem" }}>
+        <h3>Welcome offer &amp; bundles</h3>
+        <p style={{ color: "var(--muted)", marginBottom: "1rem", fontSize: ".9rem" }}>
+          Hide these while a special offer is running so customers only see the deal you want them to
+          buy. Credits people already have still work.
+        </p>
+        <div className="admin-table">
+          {BUNDLE_ROWS.map((b) => {
+            const showing = !hiddenBundles.has(b.kind);
+            return (
+              <form
+                key={b.kind}
+                action={toggleBundle.bind(null, b.kind, !showing)}
+                className="admin-row"
+                style={{ alignItems: "center", gridTemplateColumns: "2fr 1fr 1fr auto", opacity: showing ? 1 : 0.6 }}
+              >
+                <span>{b.label}</span>
+                <span>£{(b.price / 100).toFixed(2)}</span>
+                <span className={showing ? "admin-badge admin-badge--on" : "admin-badge"}>
+                  {showing ? "Showing" : "Hidden"}
+                </span>
+                <button type="submit" className="admin-link-btn">
+                  {showing ? "Hide" : "Show"}
+                </button>
+              </form>
+            );
+          })}
+        </div>
       </div>
 
       <div className="admin-card" style={{ marginTop: "1.5rem" }}>

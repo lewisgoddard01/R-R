@@ -169,10 +169,12 @@ export async function creditCancelledBookingAction(bookingId: string) {
 }
 
 // ── Pricing page items ───────────────────────────────────────────────
+// An item is buyable as soon as it has a price and a number of credits, so
+// filling those in is all it takes to add a Buy button.
 function pricingFields(formData: FormData) {
-  const buyable = formData.get("buyable") === "on";
   const pricePounds = num(formData.get("price"), 0);
   const credits = Math.round(num(formData.get("credits"), 0));
+  const buyable = pricePounds > 0 && credits > 0;
   // A buyable item always shows exactly what it charges.
   const chargedLabel =
     buyable && pricePounds > 0 ? `£${Number.isInteger(pricePounds) ? pricePounds : pricePounds.toFixed(2)}` : null;
@@ -191,11 +193,11 @@ function pricingFields(formData: FormData) {
 }
 
 function checkBuyable(fields: ReturnType<typeof pricingFields>, formData: FormData) {
-  if (formData.get("buyable") !== "on") {
-    return fields.price_label ? undefined : "Enter the price to show, e.g. £25, Free or POA.";
-  }
-  if (!fields.price_pence) return "To make it buyable, enter what it costs in £.";
-  if (!fields.credits) return "To make it buyable, enter how many class credits it gives.";
+  const hasPrice = num(formData.get("price"), 0) > 0;
+  const hasCredits = num(formData.get("credits"), 0) > 0;
+  if (hasPrice && !hasCredits) return "To sell it online, also enter how many class credits it gives.";
+  if (hasCredits && !hasPrice) return "To sell it online, also enter what it costs in £.";
+  if (!fields.price_label) return "Enter the price to show, e.g. £25, Free or POA.";
   return undefined;
 }
 
@@ -228,6 +230,16 @@ export async function setPricingItemActiveAction(itemId: string, active: boolean
   const supabase = await requireAdmin();
   const { error } = await supabase.from("pricing_items").update({ active }).eq("id", itemId);
   revalidatePricing();
+  return { error: error?.message };
+}
+
+export async function setBundleVisibleAction(kind: string, active: boolean) {
+  const supabase = await requireAdmin();
+  const { error } = await supabase
+    .from("bundle_settings")
+    .upsert({ kind, active, updated_at: new Date().toISOString() });
+  revalidatePricing();
+  revalidatePath("/book");
   return { error: error?.message };
 }
 
